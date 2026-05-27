@@ -151,15 +151,21 @@ src-tauri/
 
 ## 发布流程
 
-1. 更新版本号：
-   - `package.json` 的 `version`
-   - `src-tauri/tauri.conf.json` 的 `version`
-   - `src-tauri/Cargo.toml` 的 `version`
-2. `git tag v0.1.0 && git push origin v0.1.0`
-3. GitHub Actions 自动触发 [`release.yml`](.github/workflows/release.yml)，并行编译 Windows / macOS / Linux 产物
-4. 产物上传到 **Draft Release**——人工审阅后点 Publish 即发布
+版本号**单一来源**：只改 `package.json` 的 `version`。`src-tauri/tauri.conf.json` 通过 `"version": "../package.json"` 自动读取它；`Cargo.toml` 仅作为 cargo metadata 存在，不影响打包出来的应用版本。
 
-也可以在 Actions 页用 `workflow_dispatch` 手动触发（指定一个 tag 名）。
+```bash
+# 1. 改 package.json 的 version 字段（手动 / 用 bun pm 版本工具）
+# 2. 提交
+git add package.json && git commit -m "chore: bump version to 0.1.1"
+
+# 3. 打 tag + push
+git tag v0.1.1
+git push origin main v0.1.1
+```
+
+push tag 触发 [`release.yml`](.github/workflows/release.yml)，并行编译 Windows / macOS / Linux 产物上传到 **Draft Release**——人工审阅后点 Publish 即正式发布。
+
+也可以在 Actions 页用 `workflow_dispatch` 手动触发（指定任意 tag 名，不会创建本地 git tag）。
 
 ## 已知限制
 

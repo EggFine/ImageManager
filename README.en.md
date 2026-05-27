@@ -151,15 +151,21 @@ src-tauri/
 
 ## Release process
 
-1. Bump the version in three places:
-   - `package.json`'s `version`
-   - `src-tauri/tauri.conf.json`'s `version`
-   - `src-tauri/Cargo.toml`'s `version`
-2. `git tag v0.1.0 && git push origin v0.1.0`
-3. GitHub Actions picks up the tag and runs [`release.yml`](.github/workflows/release.yml), which builds Windows / macOS Universal / Linux in parallel.
-4. Artifacts land in a **draft release** — review them and click Publish to ship.
+Version number has a **single source of truth**: `package.json`'s `version`. `src-tauri/tauri.conf.json` reads it via `"version": "../package.json"`. `Cargo.toml`'s `version` is cargo metadata only and does not affect the bundled app version.
 
-You can also trigger the workflow manually from the Actions tab via `workflow_dispatch` (pass a tag name).
+```bash
+# 1. Bump the version in package.json
+# 2. Commit
+git add package.json && git commit -m "chore: bump version to 0.1.1"
+
+# 3. Tag and push
+git tag v0.1.1
+git push origin main v0.1.1
+```
+
+Pushing the tag triggers [`release.yml`](.github/workflows/release.yml), which builds Windows / macOS Universal / Linux in parallel and uploads the artifacts to a **draft release**. Review the draft and click Publish on GitHub to ship it.
+
+You can also trigger the workflow from the Actions tab via `workflow_dispatch` (any tag name; doesn't create a local git tag).
 
 ## Known limitations
 

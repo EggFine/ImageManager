@@ -1,8 +1,13 @@
 [package]
 name = "imagemanager"
+# Cargo metadata only — does NOT control the bundled app version.
+# Source of truth is `../package.json` (read by tauri.conf.json's
+# `"version": "../package.json"`). Sync this if you want
+# `cargo metadata` / `CARGO_PKG_VERSION` to match, but it's not required
+# for the Tauri bundle / installer / About dialog.
 version = "0.1.0"
 description = "OpenAI-compatible image API desktop client"
-authors = ["you"]
+authors = ["EggFine"]
 edition = "2021"
 
 [lib]

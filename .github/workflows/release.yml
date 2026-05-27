@@ -25,14 +25,18 @@ jobs:
           - os: macos-latest
             label: "macOS (Universal)"
             rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+            # Stable cache key fragment — avoid commas (actions/cache rejects them).
+            cache-tag: macos-universal
             args: "--target universal-apple-darwin"
           - os: windows-latest
             label: "Windows (x64)"
             rust-targets: "x86_64-pc-windows-msvc"
+            cache-tag: windows-x64
             args: ""
           - os: ubuntu-22.04
             label: "Linux (x64)"
             rust-targets: "x86_64-unknown-linux-gnu"
+            cache-tag: linux-x64
             args: ""
 
     steps:
@@ -67,9 +71,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ matrix.platform.rust-targets }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ matrix.platform.cache-tag }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ matrix.platform.rust-targets }}-
+            ${{ runner.os }}-cargo-${{ matrix.platform.cache-tag }}-
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

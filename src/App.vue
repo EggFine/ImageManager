@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useConfigStore } from "@/stores/config";
+import { useOnboardingStore } from "@/stores/onboarding";
 import { setLanguage } from "@/i18n";
 import Shell from "@/components/Shell.vue";
+import Onboarding from "@/components/Onboarding.vue";
+
+const onboarding = useOnboardingStore();
+const onboardingOpen = computed(() => {
+  if (!cfg.ready) return false;
+  return !cfg.config.onboarding_completed || onboarding.manualOpen;
+});
+
+function handleOnboardingComplete() {
+  onboarding.close();
+}
 
 const cfg = useConfigStore();
 
@@ -46,5 +58,6 @@ watch(
 <template>
   <UApp>
     <Shell />
+    <Onboarding :open="onboardingOpen" @complete="handleOnboardingComplete" />
   </UApp>
 </template>

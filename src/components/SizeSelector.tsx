@@ -68,7 +68,7 @@ export function SizeSelector(props: Props) {
         <div
           role="tablist"
           aria-label={t("size.label")}
-          className="inline-flex items-stretch h-7 p-0.5 rounded-[var(--radius-sm)] bg-inset border border-rule/60"
+          className="inline-flex items-stretch h-7 p-0.5 rounded-[var(--radius-sm)] bg-inset border border-rule"
         >
           <SegBtn active={!advanced} onClick={() => setMode(false)} label={t("size.modeBasic")} />
           <SegBtn active={advanced} onClick={() => setMode(true)} label={t("size.modeAdvanced")} />

@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Home, Images, Wand2, Settings as SettingsIcon } from "lucide-react";
+import { Home, Images, Wand2, Clock, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConfig } from "../services/store";
 import { isConfigured } from "../services/config";
+import { useImageCache } from "../services/cacheStore";
+import { useAppVersion } from "../services/version";
 import { HomePage } from "../pages/HomePage";
 import { GeneratePage } from "../pages/GeneratePage";
 import { EditPage } from "../pages/EditPage";
+import { HistoryPage } from "../pages/HistoryPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { TitleBar } from "./TitleBar";
+import { UnconfiguredBanner } from "./UnconfiguredBanner";
 
-export type Route = "home" | "generate" | "edit" | "settings";
+export type Route = "home" | "generate" | "edit" | "history" | "settings";
 
 interface NavBtnProps {
   active: boolean;
@@ -46,20 +50,14 @@ function NavBtn({ active, icon, label, shortcut, onClick }: NavBtnProps) {
           : "text-faded hover:bg-inset/70 hover:text-ink"
       )}
     >
-      {/* Active indicator:
-          - collapsed mode shows a tiny bottom-centered accent pill
-          - expanded mode shows a left-side accent bar  */}
+      {/* Active indicator — a 3×16 accent pill anchored to the button's left
+          edge. Same in collapsed and expanded modes, so the visual cue is
+          consistent at any sidebar width. */}
       {active && (
-        <>
-          <span
-            aria-hidden
-            className="lg:hidden absolute bottom-1 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-accent"
-          />
-          <span
-            aria-hidden
-            className="hidden lg:block absolute left-1.5 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-accent rounded-full"
-          />
-        </>
+        <span
+          aria-hidden
+          className="absolute left-1 lg:left-1.5 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-accent rounded-full"
+        />
       )}
 
       <span
@@ -73,7 +71,7 @@ function NavBtn({ active, icon, label, shortcut, onClick }: NavBtnProps) {
         {icon}
       </span>
 
-      <span className="hidden lg:block text-[13.5px] font-medium tracking-[0.005em] truncate flex-1 min-w-0">
+      <span className="hidden lg:block text-left text-[13.5px] font-medium tracking-[0.005em] truncate flex-1 min-w-0">
         {label}
       </span>
 
@@ -94,10 +92,18 @@ function NavBtn({ active, icon, label, shortcut, onClick }: NavBtnProps) {
 export function Shell() {
   const { t } = useTranslation();
   const [route, setRoute] = useState<Route>("home");
+  const [pendingPrompt, setPendingPrompt] = useState<{ prompt: string; page: "generate" | "edit" } | null>(null);
   const status = useConfig((s) => s.status);
   const cfg = useConfig((s) => s.config);
+  const initCache = useImageCache((s) => s.init);
+  const version = useAppVersion();
 
-  // Global shortcuts: Ctrl/Cmd+1..4 → switch route; Ctrl+, → settings
+  // Hydrate the cache store once on app boot.
+  useEffect(() => {
+    void initCache();
+  }, [initCache]);
+
+  // Global shortcuts: Ctrl/Cmd+1..5 → switch route; Ctrl+, → settings
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -108,7 +114,8 @@ export function Shell() {
       if (e.key === "1") { e.preventDefault(); setRoute("home"); }
       else if (e.key === "2") { e.preventDefault(); setRoute("generate"); }
       else if (e.key === "3") { e.preventDefault(); setRoute("edit"); }
-      else if (e.key === "4" || e.key === ",") { e.preventDefault(); setRoute("settings"); }
+      else if (e.key === "4") { e.preventDefault(); setRoute("history"); }
+      else if (e.key === "5" || e.key === ",") { e.preventDefault(); setRoute("settings"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -122,27 +129,25 @@ export function Shell() {
   return (
     <div className="grain h-full flex flex-col">
       <TitleBar />
+      <UnconfiguredBanner />
       <div className="flex-1 min-h-0 flex">
         {/* Nav rail — collapses to icon-only below lg (1024px) */}
         <aside
           className={cn(
-            "shrink-0 flex flex-col border-r border-rule/70 bg-paper/50 backdrop-blur-[2px]",
+            "shrink-0 flex flex-col border-r border-rule bg-paper/50 backdrop-blur-[2px]",
             "transition-[width] duration-200 ease-out",
             "w-[56px] lg:w-[204px]"
           )}
         >
-          {/* Header — collapsed shows a small brand dot; expanded shows kicker */}
+          {/* Header — expanded shows the section kicker; collapsed shows
+              nothing (the brand mark is already on the TitleBar, no point
+              repeating it as a mystery dot). */}
           <div
             className={cn(
-              "flex items-center",
-              "pt-4 pb-3 justify-center",
-              "lg:pt-5 lg:justify-start lg:px-5"
+              "pt-2 pb-3",
+              "lg:pt-5 lg:px-5"
             )}
           >
-            <span
-              aria-hidden
-              className="lg:hidden w-1.5 h-1.5 rounded-full bg-accent"
-            />
             <span className="kicker hidden lg:inline-block">
               {t("nav.sectionLabel")}
             </span>
@@ -170,6 +175,13 @@ export function Shell() {
               shortcut="Ctrl 3"
               onClick={() => setRoute("edit")}
             />
+            <NavBtn
+              active={route === "history"}
+              icon={<Clock size={15} strokeWidth={1.75} />}
+              label={t("nav.history")}
+              shortcut="Ctrl 4"
+              onClick={() => setRoute("history")}
+            />
           </nav>
 
           <div className="flex-1" />
@@ -181,7 +193,7 @@ export function Shell() {
               active={route === "settings"}
               icon={<SettingsIcon size={15} strokeWidth={1.75} />}
               label={t("nav.settings")}
-              shortcut="Ctrl 4"
+              shortcut="Ctrl 5"
               onClick={() => setRoute("settings")}
             />
           </div>
@@ -190,14 +202,30 @@ export function Shell() {
         {/* Content */}
         <main className="flex-1 min-w-0 overflow-y-auto px-4 md:px-7 lg:px-10 pt-4 md:pt-6 lg:pt-7 pb-6 md:pb-8 lg:pb-10 relative">
           {route === "home" && <HomePage onNavigate={setRoute} />}
-          {route === "generate" && <GeneratePage />}
-          {route === "edit" && <EditPage />}
+          {route === "generate" && (
+            <GeneratePage
+              initialPrompt={pendingPrompt?.page === "generate" ? pendingPrompt.prompt : undefined}
+              onConsumeInitialPrompt={() => setPendingPrompt(null)}
+            />
+          )}
+          {route === "edit" && (
+            <EditPage
+              initialPrompt={pendingPrompt?.page === "edit" ? pendingPrompt.prompt : undefined}
+              onConsumeInitialPrompt={() => setPendingPrompt(null)}
+            />
+          )}
+          {route === "history" && (
+            <HistoryPage
+              onUsePrompt={(prompt, page) => setPendingPrompt({ prompt, page })}
+              onNavigate={setRoute}
+            />
+          )}
           {route === "settings" && <SettingsPage />}
         </main>
       </div>
 
       {/* Status bar */}
-      <footer className="h-7 shrink-0 border-t border-rule/70 px-3 md:px-5 flex items-center justify-between gap-3 bg-paper/60 backdrop-blur-[2px]">
+      <footer className="h-7 shrink-0 border-t border-rule px-3 md:px-5 flex items-center justify-between gap-3 bg-paper/60 backdrop-blur-[2px]">
         <div className="flex items-center gap-2.5 min-w-0">
           <span
             className={cn(
@@ -218,7 +246,7 @@ export function Shell() {
           </span>
         </div>
         <span className="hidden md:inline text-[10.5px] text-trace font-mono tracking-wider shrink-0">
-          v0.1
+          {version ? `v${version}` : ""}
         </span>
       </footer>
     </div>

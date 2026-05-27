@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useImageCache } from "@/services/cacheStore";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Wand2, X, ImageDown } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -8,6 +9,11 @@ import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { ResultsView } from "@/components/ResultsView";
 import { PromptHistory } from "@/components/PromptHistory";
+import {
+  OutputOverrides,
+  defaultsFromConfig,
+  type TaskOverrides,
+} from "@/components/OutputOverrides";
 import { Button } from "@/components/ui/Button";
 import { Field, Label } from "@/components/ui/Label";
 import { Input } from "@/components/ui/Input";
@@ -23,21 +29,35 @@ import { cn } from "@/lib/utils";
 
 const SUPPORTED_EXT = /\.(png|jpe?g|webp)$/i;
 
-export function EditPage() {
+interface EditPageProps {
+  initialPrompt?: string;
+  onConsumeInitialPrompt?: () => void;
+}
+
+export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProps = {}) {
   const { t } = useTranslation();
   const cfg = useConfig((s) => s.config);
   const updateCfg = useConfig((s) => s.update);
   const setStatus = useConfig((s) => s.setStatus);
   const { push } = useToast();
+  const addToCache = useImageCache((s) => s.add);
 
   const [imagePath, setImagePath] = useState("");
   const [maskPath, setMaskPath] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
+
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+      onConsumeInitialPrompt?.();
+    }
+  }, [initialPrompt, onConsumeInitialPrompt]);
   const [n, setN] = useState(1);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<ImageResult[]>([]);
   const [partial, setPartial] = useState<PartialImage | null>(null);
   const [dragHover, setDragHover] = useState(false);
+  const [overrides, setOverrides] = useState<TaskOverrides>(() => defaultsFromConfig(cfg));
   const addHistory = useHistory((s) => s.add);
 
   // OS-level drag-and-drop: drop a PNG/JPG/WEBP anywhere on the EditPage
@@ -110,14 +130,28 @@ export function EditPage() {
     setStatus(t("status.processing"));
     addHistory(p, "edit");
 
+    // Effective config = global settings with this run's overrides layered on top.
+    const effectiveCfg = { ...cfg, ...overrides };
+
     try {
       const useStream = cfg.stream && n === 1;
       const imgs = useStream
-        ? await editStream(cfg, imagePath, mask, p, size, n, setPartial)
-        : await edit(cfg, imagePath, mask, p, size, n);
+        ? await editStream(effectiveCfg, imagePath, mask, p, size, n, setPartial)
+        : await edit(effectiveCfg, imagePath, mask, p, size, n);
       setResults(imgs);
       setPartial(null);
       setStatus(t("status.success", { count: imgs.length }));
+
+      if (cfg.auto_cache && imgs.length > 0) {
+        void addToCache({
+          page: "edit",
+          prompt: p,
+          model: cfg.edit_model,
+          size,
+          results: imgs.map((r) => r.bytes),
+          outputFormat: effectiveCfg.output_format,
+        });
+      }
     } catch (e) {
       const title = e instanceof ApiError ? t("dialog.requestFailedTitle") : t("dialog.exceptionTitle");
       const msg = e instanceof Error ? e.message : String(e);
@@ -126,7 +160,7 @@ export function EditPage() {
     } finally {
       setBusy(false);
     }
-  }, [cfg, imagePath, maskPath, prompt, n, push, t, setStatus, addHistory]);
+  }, [cfg, imagePath, maskPath, prompt, n, overrides, push, t, setStatus, addHistory, addToCache]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -234,6 +268,8 @@ export function EditPage() {
               }
             />
           </Card>
+
+          <OutputOverrides cfg={cfg} value={overrides} onChange={setOverrides} showFidelity />
 
           <Card label={t("cardLabel.run")}>
             <div className="flex items-end gap-4">

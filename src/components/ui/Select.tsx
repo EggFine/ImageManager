@@ -41,7 +41,7 @@ export function Select({ value, onValueChange, placeholder, disabled, className,
           className={cn(
             "z-50 min-w-[var(--radix-select-trigger-width)] max-h-[280px] overflow-hidden",
             "bg-card border border-rule rounded-[var(--radius)]",
-            "shadow-lg shadow-black/15 dark:shadow-black/40",
+            "shadow-popover",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
           )}
         >

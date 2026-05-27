@@ -14,6 +14,19 @@
     "core:event:default",
     "opener:default",
     {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$APPCONFIG/**" },
+        { "path": "$APPDATA/**" },
+        { "path": "$RESOURCE/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$PICTURE/**" },
+        { "path": "$HOME/**" }
+      ]
+    },
+    {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://**" }, { "url": "http://**" }]
     },
@@ -24,6 +37,7 @@
     "fs:allow-read-file",
     "fs:allow-exists",
     "fs:allow-mkdir",
+    "fs:allow-remove",
     {
       "identifier": "fs:scope",
       "allow": [

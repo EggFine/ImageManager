@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/services/store";
 import { isConfigured } from "@/services/config";
+import { useAppVersion } from "@/services/version";
+import { Page } from "@/components/Page";
 
 type Route = "home" | "generate" | "edit" | "settings";
 
@@ -34,6 +36,7 @@ export function HomePage({ onNavigate }: Props) {
   const cfg = useConfig((s) => s.config);
   const ready = isConfigured(cfg);
   const greeting = useTimeGreeting();
+  const version = useAppVersion();
 
   const themeLabel =
     cfg.theme === "system"
@@ -42,38 +45,54 @@ export function HomePage({ onNavigate }: Props) {
       ? t("home.status.themeLight")
       : t("home.status.themeDark");
 
-  return (
-    <div className="max-w-[1280px] 2xl:max-w-[1440px] mx-auto w-full flex flex-col gap-6 md:gap-8 lg:gap-10">
-      {/* Editorial masthead */}
-      <header className="relative pt-0 md:pt-2 lg:pt-3">
-        <div className="kicker flex items-center gap-2 md:gap-2.5 flex-wrap">
+  // Orchestration: each piece reveals at its own moment. easeOutExpo for the
+  // hero (slow, confident slowdown); ease-out for everything else.
+  // Hero lines also use a 4-5px blur-in so the type "focuses in" instead of
+  // popping — gives it a print-shop / cinema-titles feel.
+  const EXPO = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+  const hero = (
+    <header className="relative pt-0 md:pt-2 lg:pt-3">
+        <div
+          className="kicker flex items-center gap-2 md:gap-2.5 flex-wrap animate-in fade-in-0 slide-in-from-top-1 duration-300 ease-out"
+        >
           <span className="amber-rule shrink-0" />
           <span>{greeting}</span>
           <span className="text-decor">·</span>
-          <span>v0.1</span>
+          <span>{version ? `v${version}` : ""}</span>
           <span className="text-decor hidden md:inline">·</span>
           <span className="hidden md:inline">OpenAI compatible</span>
         </div>
 
-        {/* The slogan — bottom-of-clamp 40px lets it breathe at min window */}
+        {/* The slogan — orchestrated 2-line reveal with blur-in */}
         <h1 className="font-display font-medium leading-[0.94] tracking-[-0.028em] mt-3 md:mt-5">
-          <span className="block text-[clamp(40px,8vw,96px)] text-ink">
+          <span
+            className="block text-[clamp(40px,8vw,96px)] text-ink animate-in fade-in-0 slide-in-from-bottom-3 blur-in-[5px] duration-700"
+            style={{ animationDelay: "80ms", animationTimingFunction: EXPO }}
+          >
             Hi<span className="text-accent">.</span>
           </span>
-          <span className="block text-[clamp(28px,5.6vw,64px)] text-muted mt-1 md:mt-1.5">
+          <span
+            className="block text-[clamp(28px,5.6vw,64px)] text-muted mt-1 md:mt-1.5 animate-in fade-in-0 slide-in-from-bottom-2 blur-in-[4px] duration-700"
+            style={{ animationDelay: "200ms", animationTimingFunction: EXPO }}
+          >
             <span className="italic font-normal">I&rsquo;m </span>
             <span className="text-ink">ImageManager</span>
             <span className="text-accent">.</span>
           </span>
         </h1>
 
-        <p className="mt-4 md:mt-6 text-[13px] md:text-[14px] lg:text-[14.5px] text-faded max-w-[540px] leading-relaxed">
+        <p
+          className="mt-4 md:mt-6 text-[13px] md:text-[14px] lg:text-[14.5px] text-faded max-w-[540px] leading-relaxed animate-in fade-in-0 duration-400 ease-out"
+          style={{ animationDelay: "400ms" }}
+        >
           {t("home.tagline")}
         </p>
 
-        {/* Decorative editorial corner mark — only on wider screens */}
+        {/* Decorative editorial corner mark — last to settle */}
         <div
-          className="hidden lg:block absolute top-3 right-2 text-right"
+          className="hidden lg:block absolute top-3 right-2 text-right animate-in fade-in-0 slide-in-from-top-2 duration-700 ease-out"
+          style={{ animationDelay: "520ms" }}
           aria-hidden
         >
           <div className="font-display italic text-[14px] text-trace leading-tight">
@@ -84,33 +103,54 @@ export function HomePage({ onNavigate }: Props) {
           </div>
         </div>
       </header>
+  );
 
+  return (
+    <Page hero={hero} spacing="loose" disableEntryAnimation>
       {/* Workflow cards */}
       <section className="flex flex-col gap-3">
-        <div className="eyebrow px-1.5">{t("home.workflowsLabel")}</div>
+        <div
+          className="eyebrow px-1.5 animate-in fade-in-0 duration-300 ease-out"
+          style={{ animationDelay: "500ms" }}
+        >
+          {t("home.workflowsLabel")}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 lg:gap-5">
-          <ActionCard
-            icon={<Images size={22} strokeWidth={1.75} />}
-            number="01"
-            title={t("nav.generate")}
-            desc={t("gen.desc")}
-            shortcut="Ctrl 2"
-            onClick={() => onNavigate("generate")}
-          />
-          <ActionCard
-            icon={<Wand2 size={22} strokeWidth={1.75} />}
-            number="02"
-            title={t("nav.edit")}
-            desc={t("edit.desc")}
-            shortcut="Ctrl 3"
-            onClick={() => onNavigate("edit")}
-          />
+          <div
+            className="animate-in fade-in-0 slide-in-from-bottom-1 duration-500 ease-out"
+            style={{ animationDelay: "560ms" }}
+          >
+            <ActionCard
+              icon={<Images size={22} strokeWidth={1.75} />}
+              number="01"
+              title={t("nav.generate")}
+              desc={t("gen.desc")}
+              shortcut="Ctrl 2"
+              onClick={() => onNavigate("generate")}
+            />
+          </div>
+          <div
+            className="animate-in fade-in-0 slide-in-from-bottom-1 duration-500 ease-out"
+            style={{ animationDelay: "620ms" }}
+          >
+            <ActionCard
+              icon={<Wand2 size={22} strokeWidth={1.75} />}
+              number="02"
+              title={t("nav.edit")}
+              desc={t("edit.desc")}
+              shortcut="Ctrl 3"
+              onClick={() => onNavigate("edit")}
+            />
+          </div>
         </div>
       </section>
 
       {/* Status snapshot */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3 px-1.5">
+        <div
+          className="flex items-center justify-between gap-3 px-1.5 animate-in fade-in-0 duration-300 ease-out"
+          style={{ animationDelay: "740ms" }}
+        >
           <span className="eyebrow">{t("home.statusLabel")}</span>
           {!ready && (
             <button
@@ -124,32 +164,46 @@ export function HomePage({ onNavigate }: Props) {
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <StatusChip
-            icon={<CircleDot size={14} strokeWidth={2} />}
-            label={t("home.status.api")}
-            value={ready ? t("home.status.ready") : t("home.status.needConfig")}
-            tone={ready ? "ok" : "warn"}
-          />
-          <StatusChip
-            icon={<Server size={14} strokeWidth={1.75} />}
-            label={t("home.status.model")}
-            value={cfg.generation_model || "—"}
-            mono
-          />
-          <StatusChip
-            icon={<Palette size={14} strokeWidth={1.75} />}
-            label={t("home.status.theme")}
-            value={themeLabel}
-          />
-          <StatusChip
-            icon={<Zap size={14} strokeWidth={1.75} />}
-            label={t("home.status.stream")}
-            value={cfg.stream ? t("common.on") : t("common.off")}
-            tone={cfg.stream ? "ok" : "neutral"}
-          />
+          {[
+            <StatusChip
+              key="api"
+              icon={<CircleDot size={14} strokeWidth={2} />}
+              label={t("home.status.api")}
+              value={ready ? t("home.status.ready") : t("home.status.needConfig")}
+              tone={ready ? "ok" : "warn"}
+            />,
+            <StatusChip
+              key="model"
+              icon={<Server size={14} strokeWidth={1.75} />}
+              label={t("home.status.model")}
+              value={cfg.generation_model || "—"}
+              mono
+            />,
+            <StatusChip
+              key="theme"
+              icon={<Palette size={14} strokeWidth={1.75} />}
+              label={t("home.status.theme")}
+              value={themeLabel}
+            />,
+            <StatusChip
+              key="stream"
+              icon={<Zap size={14} strokeWidth={1.75} />}
+              label={t("home.status.stream")}
+              value={cfg.stream ? t("common.on") : t("common.off")}
+              tone={cfg.stream ? "ok" : "neutral"}
+            />,
+          ].map((chip, i) => (
+            <div
+              key={i}
+              className="animate-in fade-in-0 duration-300 ease-out"
+              style={{ animationDelay: `${800 + i * 40}ms` }}
+            >
+              {chip}
+            </div>
+          ))}
         </div>
       </section>
-    </div>
+    </Page>
   );
 }
 
@@ -172,7 +226,7 @@ function ActionCard({ icon, number, title, desc, shortcut, onClick }: ActionCard
       onClick={onClick}
       className={cn(
         "group relative text-left w-full overflow-hidden",
-        "rounded-[var(--radius)] border border-rule/80 bg-card shadow-card",
+        "rounded-[var(--radius)] border border-rule bg-card shadow-card",
         "p-4 md:p-5 lg:p-6 transition-all duration-200",
         "hover:shadow-card-hover hover:border-rule-strong hover:-translate-y-0.5",
         "active:translate-y-0 active:shadow-card",
@@ -242,7 +296,7 @@ function StatusChip({ icon, label, value, tone, mono }: StatusChipProps) {
     <div
       className={cn(
         "flex items-center gap-3 px-3 md:px-3.5 py-2.5 md:py-3 rounded-[var(--radius)]",
-        "border border-rule/70 bg-card shadow-card",
+        "border border-rule bg-card shadow-card",
         "transition-colors duration-150"
       )}
     >

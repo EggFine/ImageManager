@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             onOpenChange={(o) => !o && remove(toast.id)}
             className={cn(
               "bg-card border rounded-[var(--radius)] p-3.5 pr-10",
-              "shadow-lg shadow-black/10 dark:shadow-black/40",
+              "shadow-popover",
               "data-[state=open]:animate-in data-[state=open]:slide-in-from-right-4 data-[state=open]:fade-in-0",
               "data-[state=closed]:animate-out data-[state=closed]:fade-out-50 data-[state=closed]:slide-out-to-right-4",
               "relative",

@@ -115,7 +115,7 @@ export function Combobox({ value, onChange, options, placeholder, className }: P
           className={cn(
             "absolute z-50 mt-1 w-full max-h-56 overflow-auto",
             "bg-card border border-rule rounded-[var(--radius)]",
-            "shadow-lg shadow-black/15 dark:shadow-black/40 p-1"
+            "shadow-popover p-1"
           )}
         >
           {options.map((opt, idx) => (

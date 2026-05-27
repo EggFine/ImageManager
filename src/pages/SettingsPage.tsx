@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   FolderOpen,
@@ -14,7 +14,12 @@ import {
   PackageOpen,
   ArrowRight,
   Star,
+  RefreshCw,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
+import { checkForUpdate, downloadAndInstall, type UpdateInfo } from "@/services/updater";
 
 /** Inline GitHub octocat — `Github` was removed from lucide-react. */
 function GithubIcon({ size = 13 }: { size?: number }) {
@@ -32,13 +37,16 @@ function GithubIcon({ size = 13 }: { size?: number }) {
   );
 }
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { testConnection } from "@/services/apiClient";
 import { useToast } from "@/components/ui/Toast";
+import { useImageCache } from "@/services/cacheStore";
+import { statsOf } from "@/services/imageCache";
 import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { Button } from "@/components/ui/Button";
 import { Field, Label } from "@/components/ui/Label";
+import { Hint } from "@/components/ui/Hint";
 import { Input } from "@/components/ui/Input";
 import { Select, SelectItem } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
@@ -70,7 +78,7 @@ export function SettingsPage() {
       <div
         role="tablist"
         aria-label={t("settings.title")}
-        className="flex items-center gap-1 border-b border-rule/70 -mx-1 px-1 overflow-x-auto"
+        className="flex items-center gap-1 border-b border-rule -mx-1 px-1 overflow-x-auto overflow-y-hidden"
       >
         {tabs.map((tspec) => (
           <TabBtn
@@ -83,8 +91,12 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="flex flex-col gap-4 md:gap-5">
+      {/* Content — keyed by tab so React remounts on switch, re-triggering the
+          fade animation each time. */}
+      <div
+        key={tab}
+        className="flex flex-col gap-4 md:gap-5 animate-in fade-in-0 duration-200 ease-out"
+      >
         {tab === "appearance" && <AppearanceTab />}
         {tab === "connection" && <ConnectionTab />}
         {tab === "models" && <ModelsTab />}
@@ -114,25 +126,25 @@ function TabBtn({
       role="tab"
       aria-selected={active}
       onClick={onClick}
+      // The indicator is `border-b-2` IN flow, so it lives inside the button's
+      // box. The strip's own `border-b` runs 1px lower; the negative `-mb-px`
+      // on every tab pulls each one down so its 2px border overlays the
+      // strip's 1px border seamlessly. No absolute children that bleed past
+      // the box → no phantom 1-pixel overflow → no ghost main scrollbar.
       className={cn(
-        "relative inline-flex items-center gap-2 px-3 py-2.5 shrink-0",
-        "text-[13px] font-medium tracking-tight transition-colors duration-150",
+        "inline-flex items-center gap-2 px-3 h-10 shrink-0 -mb-px",
+        "border-b-2 transition-colors duration-150",
+        "text-[13px] font-medium tracking-tight",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 rounded-t-sm",
-        active ? "text-ink" : "text-faded hover:text-ink"
+        active
+          ? "border-accent text-ink"
+          : "border-transparent text-faded hover:text-ink"
       )}
     >
       <span className={cn("transition-colors", active ? "text-accent" : "text-faded")}>
         {icon}
       </span>
       <span>{label}</span>
-      <span
-        className={cn(
-          "absolute left-2 right-2 -bottom-px h-[2px] bg-accent rounded-full",
-          "transition-opacity duration-150",
-          active ? "opacity-100" : "opacity-0"
-        )}
-        aria-hidden
-      />
     </button>
   );
 }
@@ -171,7 +183,7 @@ function AppearanceTab() {
           </Select>
         </Field>
       </div>
-      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.appearanceHint")}</p>
+      <Hint className="mt-2">{t("settings.appearanceHint")}</Hint>
     </Card>
   );
 }
@@ -246,7 +258,7 @@ function ConnectionTab() {
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-[11.5px] text-faded/90">{t("settings.autoSaveHint")}</p>
+        <Hint>{t("settings.autoSaveHint")}</Hint>
         <Button
           variant="outline"
           onClick={handleTest}
@@ -291,7 +303,7 @@ function ModelsTab() {
           />
         </Field>
       </div>
-      <p className="text-[11.5px] text-faded/90 mt-2 leading-relaxed">{t("settings.availModels")}</p>
+      <Hint className="mt-2 leading-relaxed">{t("settings.availModels")}</Hint>
 
       <div className="my-4 h-px bg-rule" />
 
@@ -309,7 +321,7 @@ function ModelsTab() {
           })
         }
       />
-      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.sizeHint")}</p>
+      <Hint className="mt-2">{t("settings.sizeHint")}</Hint>
 
       <div className="my-4 h-px bg-rule" />
 
@@ -338,7 +350,7 @@ function ModelsTab() {
           </Select>
         </Field>
       </div>
-      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.qualityHint")}</p>
+      <Hint className="mt-2">{t("settings.qualityHint")}</Hint>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
         <Field>
@@ -366,10 +378,10 @@ function ModelsTab() {
         )}
       </div>
       {(cfg.output_format === "jpeg" || cfg.output_format === "webp") && (
-        <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.outputCompressionHint")}</p>
+        <Hint className="mt-2">{t("settings.outputCompressionHint")}</Hint>
       )}
       {cfg.background === "transparent" && cfg.output_format === "jpeg" && (
-        <p className="text-[11.5px] text-warning mt-2">{t("settings.backgroundHint")}</p>
+        <Hint tone="warning" className="mt-2">{t("settings.backgroundHint")}</Hint>
       )}
 
       <div className="my-4 h-px bg-rule" />
@@ -385,7 +397,7 @@ function ModelsTab() {
           <SelectItem value="low">{t("settings.fidLow")}</SelectItem>
         </Select>
       </Field>
-      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.fidelityHint")}</p>
+      <Hint className="mt-2">{t("settings.fidelityHint")}</Hint>
 
       <div className="my-4 h-px bg-rule" />
 
@@ -412,6 +424,7 @@ function GenerationTab() {
   const update = useConfig((s) => s.update);
   const configPath = useConfig((s) => s.configPath);
   const patch = (p: Partial<AppConfig>) => void update(p);
+  const { push } = useToast();
 
   return (
     <>
@@ -440,7 +453,11 @@ function GenerationTab() {
             />
           </Field>
         </div>
-        <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.streamHint")}</p>
+        <Hint className="mt-2">{t("settings.streamHint")}</Hint>
+
+        <div className="my-4 h-px bg-rule" />
+
+        <CacheControls />
       </Card>
 
       <Card label={t("settings.section.storage")}>
@@ -484,6 +501,7 @@ function GenerationTab() {
                 await openPath(configPath);
               } catch (e) {
                 console.error(e);
+                push({ title: String(e), intent: "error" });
               }
             }}
           >
@@ -491,11 +509,11 @@ function GenerationTab() {
           </Button>
           <Button
             onClick={async () => {
-              const dir = configPath.replace(/[\\/][^\\/]+$/, "");
               try {
-                await openPath(dir);
+                await revealItemInDir(configPath);
               } catch (e) {
                 console.error(e);
+                push({ title: String(e), intent: "error" });
               }
             }}
             variant="outline"
@@ -508,14 +526,119 @@ function GenerationTab() {
   );
 }
 
+function CacheControls() {
+  const { t } = useTranslation();
+  const cfg = useConfig((s) => s.config);
+  const update = useConfig((s) => s.update);
+  const patch = (p: Partial<AppConfig>) => void update(p);
+  const entries = useImageCache((s) => s.entries);
+  const clearCache = useImageCache((s) => s.clear);
+  const stats = statsOf(entries);
+
+  const onClear = async () => {
+    if (!window.confirm(t("historyPage.confirmClear"))) return;
+    await clearCache();
+  };
+
+  return (
+    <Field>
+      <Label>{t("settings.autoCache")}</Label>
+      <div className="h-9 flex items-center gap-3">
+        <Switch
+          aria-label={t("settings.autoCache")}
+          checked={cfg.auto_cache}
+          onCheckedChange={(c) => patch({ auto_cache: c })}
+        />
+        <span className="text-[12px] text-muted">
+          {cfg.auto_cache ? t("settings.autoCacheOn") : t("settings.autoCacheOff")}
+        </span>
+      </div>
+      <Hint className="mt-2">{t("settings.autoCacheHint")}</Hint>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-[11.5px] text-faded font-mono tracking-tight">
+          {t("settings.cacheStats", { entries: stats.entryCount, images: stats.imageCount })}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onClear}
+          disabled={stats.entryCount === 0}
+        >
+          {t("settings.clearCache")}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
 function AboutTab() {
   const { t } = useTranslation();
+  const { push } = useToast();
+  const [version, setVersion] = useState<string>("");
+  const [checking, setChecking] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
+
+  // Pull the running app's version from Tauri at mount. This reads from
+  // tauri.conf.json's `"version": "../package.json"` pointer, so it's the
+  // single source of truth — no hardcoding, no drift after `package.json`
+  // bumps.
+  useEffect(() => {
+    void getVersion()
+      .then(setVersion)
+      .catch((e) => console.error("getVersion failed", e));
+  }, []);
 
   const openLink = async (url: string) => {
     try {
       await openUrl(url);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleCheck = async () => {
+    setChecking(true);
+    setUpdateInfo(null);
+    try {
+      const info = await checkForUpdate();
+      if (info) {
+        setUpdateInfo(info);
+        push({
+          title: t("updater.available", { version: info.version }),
+          body: t("updater.availableBody"),
+          intent: "info",
+        });
+      } else {
+        push({
+          title: t("updater.upToDate"),
+          body: `v${version}`,
+          intent: "ok",
+        });
+      }
+    } catch (e) {
+      push({
+        title: t("updater.failed"),
+        body: e instanceof Error ? e.message : String(e),
+        intent: "error",
+      });
+    }
+    setChecking(false);
+  };
+
+  const handleInstall = async () => {
+    if (!updateInfo) return;
+    setInstalling(true);
+    try {
+      await downloadAndInstall(updateInfo);
+      // App will relaunch on success — no further UI needed.
+    } catch (e) {
+      push({
+        title: t("updater.failed"),
+        body: e instanceof Error ? e.message : String(e),
+        intent: "error",
+      });
+      setInstalling(false);
     }
   };
 
@@ -538,7 +661,8 @@ function AboutTab() {
             <span className="text-accent">.</span>
           </h2>
           <div className="font-mono text-[10.5px] tracking-[0.18em] text-trace mt-1">
-            {t("about.versionLabel")} <span className="text-faded">0.1.0</span>
+            {t("about.versionLabel")}{" "}
+            <span className="text-faded">{version ? `v${version}` : "…"}</span>
           </div>
         </div>
 
@@ -565,7 +689,47 @@ function AboutTab() {
               <PackageOpen size={13} />
               {t("about.viewReleases")}
             </Button>
+            <Button
+              variant="outline"
+              onClick={handleCheck}
+              loading={checking}
+              disabled={installing}
+            >
+              <RefreshCw size={13} />
+              {checking ? t("updater.checking") : t("updater.checkForUpdates")}
+            </Button>
           </div>
+
+          {/* Update-found callout — only rendered when an update is sitting
+              available. Lets the user pull the trigger without leaving the
+              About tab. */}
+          {updateInfo && (
+            <div className="rounded-[var(--radius)] border border-accent/30 bg-accent-soft/40 p-3.5 flex items-start gap-3">
+              <CheckCircle2 size={16} className="text-accent shrink-0 mt-0.5" strokeWidth={1.75} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] text-ink font-medium">
+                  {t("updater.available", { version: updateInfo.version })}
+                </div>
+                {updateInfo.body && (
+                  <div className="text-[12px] text-faded mt-1 leading-relaxed line-clamp-3 whitespace-pre-wrap">
+                    {updateInfo.body}
+                  </div>
+                )}
+                <div className="text-[10.5px] text-trace mt-1.5 font-mono">
+                  v{version} → v{updateInfo.version}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleInstall}
+                loading={installing}
+              >
+                <Download size={12} />
+                {installing ? t("updater.installing") : t("updater.installAndRestart")}
+              </Button>
+            </div>
+          )}
 
           <div className="h-px bg-rule" />
 

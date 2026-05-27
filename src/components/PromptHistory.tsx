@@ -72,7 +72,7 @@ export function PromptHistory({ page, onPick }: Props) {
             "flex flex-col"
           )}
         >
-          <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-rule/70">
+          <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-rule">
             <span className="eyebrow">{t("history.title")}</span>
             {history.length > 0 && (
               <button

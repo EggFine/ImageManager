@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { useImageCache } from "@/services/cacheStore";
 import { useTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { ResultsView } from "@/components/ResultsView";
 import { PromptHistory } from "@/components/PromptHistory";
+import {
+  OutputOverrides,
+  defaultsFromConfig,
+  type TaskOverrides,
+} from "@/components/OutputOverrides";
 import { useHistory } from "@/services/history";
 import { Button } from "@/components/ui/Button";
 import { Field, Label } from "@/components/ui/Label";
@@ -22,18 +28,37 @@ import { isConfigured } from "@/services/config";
 import { computeSize } from "@/services/sizeCalc";
 import { useConfig } from "@/services/store";
 
-export function GeneratePage() {
+interface GeneratePageProps {
+  /** When supplied (e.g. from History → "Use this prompt"), pre-fills the
+   *  textarea on first mount. */
+  initialPrompt?: string;
+  onConsumeInitialPrompt?: () => void;
+}
+
+export function GeneratePage({ initialPrompt, onConsumeInitialPrompt }: GeneratePageProps = {}) {
   const { t } = useTranslation();
   const cfg = useConfig((s) => s.config);
   const updateCfg = useConfig((s) => s.update);
   const setStatus = useConfig((s) => s.setStatus);
   const { push } = useToast();
+  const addToCache = useImageCache((s) => s.add);
 
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
+
+  // Pick up a fresh initialPrompt — e.g. user re-enters the page from history
+  // with a different prompt to reuse. We then clear it so toggling tabs doesn't
+  // reapply stale state.
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+      onConsumeInitialPrompt?.();
+    }
+  }, [initialPrompt, onConsumeInitialPrompt]);
   const [n, setN] = useState(1);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<ImageResult[]>([]);
   const [partial, setPartial] = useState<PartialImage | null>(null);
+  const [overrides, setOverrides] = useState<TaskOverrides>(() => defaultsFromConfig(cfg));
   const addHistory = useHistory((s) => s.add);
 
   const submit = useCallback(async () => {
@@ -56,14 +81,30 @@ export function GeneratePage() {
     setStatus(t("status.generating"));
     addHistory(p, "generate");
 
+    // Build an effective config: start from global settings, then layer the
+    // per-task overrides on top. Task-level wins, per user request.
+    const effectiveCfg = { ...cfg, ...overrides };
+
     try {
       const useStream = cfg.stream && n === 1;
       const imgs = useStream
-        ? await generateStream(cfg, p, size, n, setPartial)
-        : await generate(cfg, p, size, n);
+        ? await generateStream(effectiveCfg, p, size, n, setPartial)
+        : await generate(effectiveCfg, p, size, n);
       setResults(imgs);
       setPartial(null);
       setStatus(t("status.success", { count: imgs.length }));
+
+      // Persist to disk + history index unless the user opted out.
+      if (cfg.auto_cache && imgs.length > 0) {
+        void addToCache({
+          page: "generate",
+          prompt: p,
+          model: cfg.generation_model,
+          size,
+          results: imgs.map((r) => r.bytes),
+          outputFormat: effectiveCfg.output_format,
+        });
+      }
     } catch (e) {
       const title = e instanceof ApiError ? t("dialog.requestFailedTitle") : t("dialog.exceptionTitle");
       const msg = e instanceof Error ? e.message : String(e);
@@ -72,7 +113,7 @@ export function GeneratePage() {
     } finally {
       setBusy(false);
     }
-  }, [cfg, prompt, n, push, t, setStatus, addHistory]);
+  }, [cfg, prompt, n, overrides, push, t, setStatus, addHistory, addToCache]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,6 +167,8 @@ export function GeneratePage() {
               }
             />
           </Card>
+
+          <OutputOverrides cfg={cfg} value={overrides} onChange={setOverrides} />
 
           <Card label={t("cardLabel.run")}>
             <div className="flex items-end gap-4">

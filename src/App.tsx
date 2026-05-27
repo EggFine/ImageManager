@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Shell } from "./components/Shell";
+import { OnboardingDialog } from "./components/Onboarding";
 import { ToastProvider, useToast } from "./components/ui/Toast";
 import { useConfig } from "./services/store";
+import { useOnboarding } from "./services/onboarding";
 import { checkForUpdate, downloadAndInstall, type UpdateInfo } from "./services/updater";
 
 function applyTheme(themeCfg: string) {
@@ -74,6 +76,24 @@ export default function App() {
     <ToastProvider>
       <UpdateProbe />
       <Shell />
+      <OnboardingGate />
     </ToastProvider>
+  );
+}
+
+/** Wizard gate — opens automatically on the very first launch (when
+ *  `onboarding_completed` is false), AND any time `useOnboarding.open()`
+ *  is called from elsewhere (e.g. the UnconfiguredBanner). */
+function OnboardingGate() {
+  const ready = useConfig((s) => s.ready);
+  const onboarded = useConfig((s) => s.config.onboarding_completed);
+  const manualOpen = useOnboarding((s) => s.manualOpen);
+  const close = useOnboarding((s) => s.close);
+  if (!ready) return null;
+  return (
+    <OnboardingDialog
+      open={!onboarded || manualOpen}
+      onComplete={close}
+    />
   );
 }

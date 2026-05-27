@@ -109,7 +109,7 @@ export function ResultsView({ results, partial, streaming }: Props) {
       <div
         className={cn(
           "relative flex-1 min-h-[260px] md:min-h-[320px] lg:min-h-[360px] rounded-[var(--radius)] overflow-hidden",
-          "border border-rule/80 bg-inset/60 shadow-card"
+          "border border-rule bg-inset/60 shadow-card"
         )}
       >
         {/* Subtle paper texture inside the preview frame */}
@@ -125,12 +125,16 @@ export function ResultsView({ results, partial, streaming }: Props) {
         <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 lg:p-10">
           {previewUrl ? (
             <img
+              // key forces React to remount the <img> when previewUrl changes
+              // → the filmic enter animation re-fires on each new image.
+              key={previewUrl}
               src={previewUrl}
               alt=""
               className={cn(
                 "max-w-full max-h-full object-contain select-none rounded-[6px]",
                 "shadow-[0_2px_8px_rgba(0,0,0,0.08),0_12px_30px_rgba(0,0,0,0.10)]",
                 "dark:shadow-[0_2px_8px_rgba(0,0,0,0.5),0_12px_30px_rgba(0,0,0,0.4)]",
+                "animate-filmic-in",
                 showStream && "animate-pulse"
               )}
             />
@@ -158,9 +162,12 @@ export function ResultsView({ results, partial, streaming }: Props) {
               onClick={() => setSelected(i)}
               aria-label={t("results.selectThumb", { n: i + 1 })}
               aria-pressed={i === selected}
+              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
               className={cn(
                 "shrink-0 w-16 h-16 relative rounded-[var(--radius-sm)] overflow-hidden",
                 "border-2 transition-all duration-150",
+                "hover:scale-[1.03] active:scale-[0.97]",
+                "animate-in fade-in-0 zoom-in-90 duration-300 ease-out",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
                 i === selected
                   ? "border-accent shadow-[0_2px_8px_color-mix(in_oklab,var(--accent)_35%,transparent)]"
@@ -212,7 +219,7 @@ function EmptyState({ streaming }: { streaming: boolean }) {
   }
   return (
     <div className="flex flex-col items-center gap-3 text-trace">
-      <div className="w-14 h-14 rounded-full bg-card border border-rule/70 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
+      <div className="w-14 h-14 rounded-full bg-card border border-rule flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
         <ImagePlus size={22} strokeWidth={1.5} className="text-faded" />
       </div>
       <div className="text-center">

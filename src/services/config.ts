@@ -29,6 +29,14 @@ export interface AppConfig {
   backdrop: "mica" | "micaalt" | "acrylic" | "none";
   language: "system" | "zh-Hans" | "en-US";
   save_directory: string;
+  /** When on (default), every successful generation/edit is auto-cached
+   *  to `<app-data>/cache/images/` and indexed in history.json. Browsable
+   *  from the History page. */
+  auto_cache: boolean;
+  /** True once the user has been through the first-launch wizard (or
+   *  intentionally skipped it). False on a brand-new config — that's what
+   *  triggers the OnboardingDialog at app boot. */
+  onboarding_completed: boolean;
 }
 
 export const defaultConfig: AppConfig = {
@@ -54,6 +62,8 @@ export const defaultConfig: AppConfig = {
   backdrop: "mica",
   language: "system",
   save_directory: "",
+  auto_cache: true,
+  onboarding_completed: false,
 };
 
 let cachedConfigPath: string | null = null;
@@ -96,6 +106,8 @@ export async function getConfigPath(): Promise<string> {
 export async function loadConfig(): Promise<AppConfig> {
   const path = await getConfigPath();
   if (!(await exists(path))) {
+    // First launch ever — leave `onboarding_completed: false` so the wizard
+    // surfaces.
     await saveConfig(defaultConfig);
     return { ...defaultConfig };
   }

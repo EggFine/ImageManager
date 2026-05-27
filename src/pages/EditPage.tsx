@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useImageCache } from "@/services/cacheStore";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Wand2, X, ImageDown } from "lucide-react";
@@ -10,8 +10,10 @@ import { SizeSelector } from "@/components/SizeSelector";
 import { ResultsView } from "@/components/ResultsView";
 import { PromptHistory } from "@/components/PromptHistory";
 import {
-  OutputOverrides,
+  ParamSourceHeader,
+  ParamFieldsCard,
   defaultsFromConfig,
+  resolveOverrides,
   type TaskOverrides,
 } from "@/components/OutputOverrides";
 import { Button } from "@/components/ui/Button";
@@ -19,12 +21,15 @@ import { Field, Label } from "@/components/ui/Label";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { NumberInput } from "@/components/ui/NumberInput";
+import { Select, SelectItem } from "@/components/ui/Select";
+import { Hint } from "@/components/ui/Hint";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, ImageResult, PartialImage, edit, editStream } from "@/services/apiClient";
 import { computeSize } from "@/services/sizeCalc";
-import { isConfigured } from "@/services/config";
+import { isConfigured, resolveEndpoint } from "@/services/config";
 import { useConfig } from "@/services/store";
 import { useHistory } from "@/services/history";
+import { ENDPOINT_TYPE_LABEL } from "@/services/presets";
 import { cn } from "@/lib/utils";
 
 const SUPPORTED_EXT = /\.(png|jpe?g|webp)$/i;
@@ -38,6 +43,7 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
   const { t } = useTranslation();
   const cfg = useConfig((s) => s.config);
   const updateCfg = useConfig((s) => s.update);
+  const updatePreset = useConfig((s) => s.updatePreset);
   const setStatus = useConfig((s) => s.setStatus);
   const { push } = useToast();
   const addToCache = useImageCache((s) => s.add);
@@ -57,11 +63,57 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
   const [results, setResults] = useState<ImageResult[]>([]);
   const [partial, setPartial] = useState<PartialImage | null>(null);
   const [dragHover, setDragHover] = useState(false);
-  const [overrides, setOverrides] = useState<TaskOverrides>(() => defaultsFromConfig(cfg));
+  const [customOverrides, setCustomOverrides] = useState<TaskOverrides>(() => defaultsFromConfig(cfg));
+  const paramSource = cfg.selected_edit_param_source || "global";
+  const handleParamSourceChange = (next: string) => {
+    if (next === "custom") {
+      setCustomOverrides(resolveOverrides(cfg, paramSource, customOverrides));
+    }
+    void updateCfg({ selected_edit_param_source: next });
+  };
   const addHistory = useHistory((s) => s.add);
 
-  // OS-level drag-and-drop: drop a PNG/JPG/WEBP anywhere on the EditPage
-  // and it becomes the source image. Window-level event from Tauri.
+  const selectedModelId = useMemo(() => {
+    if (cfg.selected_edit_model_id && cfg.models.some((m) => m.id === cfg.selected_edit_model_id)) {
+      return cfg.selected_edit_model_id;
+    }
+    return cfg.models[0]?.id ?? "";
+  }, [cfg.selected_edit_model_id, cfg.models]);
+
+  const resolved = selectedModelId ? resolveEndpoint(cfg, selectedModelId) : null;
+  const isGoogle = resolved?.endpoint.type === "google";
+
+  const handleSelectModel = (id: string) => {
+    void updateCfg({ selected_edit_model_id: id });
+  };
+
+  const effectiveOverrides = resolveOverrides(cfg, paramSource, customOverrides);
+  const handleSizeChange = (next: { aspectRatio: string; resolution: string; advanced: boolean; advancedText: string }) => {
+    if (paramSource === "global") {
+      void updateCfg({
+        default_aspect_ratio: next.aspectRatio,
+        default_resolution: next.resolution,
+        advanced_size_mode: next.advanced,
+        default_size: next.advancedText,
+      });
+    } else if (paramSource === "custom") {
+      setCustomOverrides({
+        ...customOverrides,
+        aspect_ratio: next.aspectRatio,
+        resolution: next.resolution,
+        advanced_size_mode: next.advanced,
+        size: next.advancedText,
+      });
+    } else {
+      void updatePreset(paramSource, {
+        aspect_ratio: next.aspectRatio,
+        resolution: next.resolution,
+        advanced_size_mode: next.advanced,
+        size: next.advancedText,
+      });
+    }
+  };
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     const setup = async () => {
@@ -91,9 +143,6 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // OpenAI /images/edits per gpt-image-2 docs:
-  //   - source image: PNG / JPG / WEBP, ≤ 50 MB each
-  //   - mask: PNG only (alpha channel encodes the editable region)
   const pickFile = async (filters: { name: string; extensions: string[] }[]): Promise<string | null> => {
     const picked = await openDialog({ filters });
     if (typeof picked === "string") return picked;
@@ -106,7 +155,7 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
   const pickMask = () => pickFile([{ name: "PNG", extensions: ["png"] }]);
 
   const submit = useCallback(async () => {
-    if (!isConfigured(cfg)) {
+    if (!isConfigured(cfg) || !resolved) {
       push({ title: t("dialog.missingKeyTitle"), body: t("dialog.missingKeyBody"), intent: "warn" });
       return;
     }
@@ -119,10 +168,8 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
       push({ title: t("dialog.missingPromptTitle"), body: t("dialog.missingEditPromptBody"), intent: "warn" });
       return;
     }
-    const size = cfg.advanced_size_mode
-      ? cfg.default_size
-      : computeSize(cfg.default_aspect_ratio, cfg.default_resolution);
-    const mask = maskPath || null;
+    // Gemini doesn't support a separate mask channel — silently drop.
+    const mask = isGoogle ? null : maskPath || null;
 
     setBusy(true);
     setResults([]);
@@ -130,14 +177,17 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
     setStatus(t("status.processing"));
     addHistory(p, "edit");
 
-    // Effective config = global settings with this run's overrides layered on top.
+    const overrides = resolveOverrides(cfg, paramSource, customOverrides);
+    const size = overrides.advanced_size_mode
+      ? overrides.size
+      : computeSize(overrides.aspect_ratio, overrides.resolution);
     const effectiveCfg = { ...cfg, ...overrides };
 
     try {
       const useStream = cfg.stream && n === 1;
       const imgs = useStream
-        ? await editStream(effectiveCfg, imagePath, mask, p, size, n, setPartial)
-        : await edit(effectiveCfg, imagePath, mask, p, size, n);
+        ? await editStream(resolved.endpoint, resolved.model.model_id, effectiveCfg, imagePath, mask, p, size, n, setPartial)
+        : await edit(resolved.endpoint, resolved.model.model_id, effectiveCfg, imagePath, mask, p, size, n);
       setResults(imgs);
       setPartial(null);
       setStatus(t("status.success", { count: imgs.length }));
@@ -146,7 +196,7 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
         void addToCache({
           page: "edit",
           prompt: p,
-          model: cfg.edit_model,
+          model: resolved.model.model_id,
           size,
           results: imgs.map((r) => r.bytes),
           outputFormat: effectiveCfg.output_format,
@@ -160,7 +210,7 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
     } finally {
       setBusy(false);
     }
-  }, [cfg, imagePath, maskPath, prompt, n, overrides, push, t, setStatus, addHistory, addToCache]);
+  }, [cfg, resolved, imagePath, maskPath, prompt, n, paramSource, customOverrides, isGoogle, push, t, setStatus, addHistory, addToCache]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -173,13 +223,12 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
     return () => window.removeEventListener("keydown", onKey);
   }, [submit, busy]);
 
-  const isImg2 = cfg.edit_model.toLowerCase().startsWith("gpt-image-2");
+  const isImg2 = !!resolved && resolved.model.model_id.toLowerCase().startsWith("gpt-image-2");
   const fidelity = isImg2 ? t("edit.fidelityImg2") : t("edit.fidelityCustom", { value: cfg.input_fidelity });
 
   return (
     <Page title={t("edit.title")} desc={t("edit.desc")}>
       <div className="relative grid gap-4 md:gap-5 lg:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
-        {/* Drag-and-drop overlay — visible only while a drop is hovering */}
         {dragHover && (
           <div
             className={cn(
@@ -198,6 +247,28 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
         )}
 
         <div className="flex flex-col gap-3 md:gap-4 lg:gap-5">
+          <Card label={t("edit.modelSelect")}>
+            {cfg.models.length === 0 ? (
+              <Hint tone="warning">{t("gen.noModels")}</Hint>
+            ) : (
+              <Select value={selectedModelId} onValueChange={handleSelectModel}>
+                {cfg.models.map((m) => {
+                  const ep = cfg.endpoints.find((e) => e.id === m.endpoint_id);
+                  return (
+                    <SelectItem key={m.id} value={m.id}>
+                      <span className="font-medium">{m.label}</span>
+                      {ep && (
+                        <span className="text-trace ml-2 font-mono text-[11.5px]">
+                          · {ep.name} ({ENDPOINT_TYPE_LABEL[ep.type]})
+                        </span>
+                      )}
+                    </SelectItem>
+                  );
+                })}
+              </Select>
+            )}
+          </Card>
+
           <Card label={t("cardLabel.inputs")}>
             <Field className="mb-3">
               <Label>{t("edit.source")}</Label>
@@ -211,25 +282,28 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
                 </Button>
               </div>
             </Field>
-            <Field>
-              <Label>{t("edit.mask")}</Label>
-              <div className="flex gap-2">
-                <Input value={maskPath} readOnly placeholder={t("common.notSelected") ?? ""} mono />
-                <Button
-                  aria-label={t("a11y.pickImage")}
-                  onClick={async () => { const p = await pickMask(); if (p) setMaskPath(p); }}
-                >
-                  <FolderOpen size={12} />
-                </Button>
-                <Button
-                  aria-label={t("a11y.clearMask")}
-                  onClick={() => setMaskPath("")}
-                  variant="ghost"
-                >
-                  <X size={12} />
-                </Button>
-              </div>
-            </Field>
+            {!isGoogle && (
+              <Field>
+                <Label>{t("edit.mask")}</Label>
+                <div className="flex gap-2">
+                  <Input value={maskPath} readOnly placeholder={t("common.notSelected") ?? ""} mono />
+                  <Button
+                    aria-label={t("a11y.pickImage")}
+                    onClick={async () => { const p = await pickMask(); if (p) setMaskPath(p); }}
+                  >
+                    <FolderOpen size={12} />
+                  </Button>
+                  <Button
+                    aria-label={t("a11y.clearMask")}
+                    onClick={() => setMaskPath("")}
+                    variant="ghost"
+                  >
+                    <X size={12} />
+                  </Button>
+                </div>
+              </Field>
+            )}
+            {isGoogle && <Hint>{t("edit.googleMaskHint")}</Hint>}
           </Card>
 
           <Card
@@ -252,34 +326,55 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
             />
           </Card>
 
-          <Card label={t("cardLabel.dimensions")}>
-            <SizeSelector
-              aspectRatio={cfg.default_aspect_ratio}
-              resolution={cfg.default_resolution}
-              advanced={cfg.advanced_size_mode}
-              advancedText={cfg.default_size}
-              onChange={(n) =>
-                updateCfg({
-                  default_aspect_ratio: n.aspectRatio,
-                  default_resolution: n.resolution,
-                  advanced_size_mode: n.advanced,
-                  default_size: n.advancedText,
-                })
-              }
+          {!isGoogle && (
+            <ParamSourceHeader
+              cfg={cfg}
+              source={paramSource}
+              onSourceChange={handleParamSourceChange}
+              customValue={customOverrides}
+              showFidelity
             />
-          </Card>
+          )}
 
-          <OutputOverrides cfg={cfg} value={overrides} onChange={setOverrides} showFidelity />
+          {!isGoogle && paramSource === "custom" && (
+            <Card label={t("cardLabel.dimensions")}>
+              <SizeSelector
+                aspectRatio={effectiveOverrides.aspect_ratio}
+                resolution={effectiveOverrides.resolution}
+                advanced={effectiveOverrides.advanced_size_mode}
+                advancedText={effectiveOverrides.size}
+                onChange={handleSizeChange}
+              />
+            </Card>
+          )}
+
+          {!isGoogle && paramSource === "custom" && (
+            <ParamFieldsCard
+              value={customOverrides}
+              onChange={setCustomOverrides}
+              showFidelity
+            />
+          )}
+
+          {isGoogle && (
+            <Card label={t("cardLabel.output")}>
+              <Hint>{t("gen.googleHint")}</Hint>
+            </Card>
+          )}
 
           <Card label={t("cardLabel.run")}>
             <div className="flex items-end gap-4">
-              <Field className="w-24">
-                <Label>{t("gen.n")}</Label>
-                <NumberInput value={n} onChange={setN} min={1} max={10} />
-              </Field>
+              {!isGoogle && (
+                <Field className="w-24">
+                  <Label>{t("gen.n")}</Label>
+                  <NumberInput value={n} onChange={setN} min={1} max={10} />
+                </Field>
+              )}
               <div className="flex-1 min-w-0 pb-1">
                 <span className="text-[11.5px] text-faded truncate block leading-relaxed">
-                  {t("edit.modelHint", { model: cfg.edit_model, fidelity, stream: cfg.stream ? t("common.on") : t("common.off") })}
+                  {resolved
+                    ? t("edit.modelHint", { model: resolved.model.label, fidelity, stream: cfg.stream ? t("common.on") : t("common.off") })
+                    : t("gen.noModels")}
                 </span>
               </div>
             </div>
@@ -288,6 +383,7 @@ export function EditPage({ initialPrompt, onConsumeInitialPrompt }: EditPageProp
               variant="primary"
               onClick={submit}
               loading={busy}
+              disabled={!resolved}
               className="w-full mt-4 group"
             >
               {!busy && <Wand2 size={15} className="transition-transform group-hover:-rotate-12" />}

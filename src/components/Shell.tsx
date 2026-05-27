@@ -122,9 +122,7 @@ export function Shell() {
   }, []);
 
   const ready = isConfigured(cfg);
-  const fallback = ready
-    ? t("status.ready", { url: cfg.base_url })
-    : t("status.needConfig");
+  const fallback = ready ? t("status.ready") : t("status.needConfig");
 
   return (
     <div className="grain h-full flex flex-col">
@@ -229,18 +227,11 @@ export function Shell() {
         <div className="flex items-center gap-2.5 min-w-0">
           <span
             className={cn(
-              "relative block w-1.5 h-1.5 rounded-full shrink-0",
+              "block w-1.5 h-1.5 rounded-full shrink-0",
               ready ? "bg-success" : "bg-warning"
             )}
             aria-hidden
-          >
-            <span
-              className={cn(
-                "absolute inset-0 rounded-full animate-ping",
-                ready ? "bg-success/60" : "bg-warning/60"
-              )}
-            />
-          </span>
+          />
           <span className="text-[11.5px] text-faded tracking-tight truncate">
             {status || fallback}
           </span>

@@ -1,16 +1,76 @@
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { join, resourceDir, appConfigDir } from "@tauri-apps/api/path";
 import { platform } from "@tauri-apps/plugin-os";
+import { DEFAULT_BASE_URL, type EndpointType } from "./presets";
 
-export interface AppConfig {
+/** Schema version. Bumped when the layout becomes incompatible enough that
+ *  loadConfig() needs to reset. v2 = multi-endpoint refactor. */
+export const CONFIG_SCHEMA_VERSION = 2;
+
+export interface Endpoint {
+  id: string;
+  name: string;
+  type: EndpointType;
   base_url: string;
   api_key: string;
-  generation_model: string;
-  edit_model: string;
+}
+
+export interface ModelEntry {
+  id: string;
+  endpoint_id: string;
+  model_id: string;
+  label: string;
+  is_custom: boolean;
+}
+
+/** A named bundle of OpenAI-compatible output params. Users can save several
+ *  and pick one per task from the Generate / Edit pages without touching the
+ *  global defaults. */
+export interface ParamPreset {
+  id: string;
+  name: string;
+  // Size fields — same shape as cfg.default_* but short-named.
+  aspect_ratio: string;
+  resolution: string;
+  advanced_size_mode: boolean;
+  size: string;
+  // Output fields
+  quality: "auto" | "low" | "medium" | "high";
+  output_format: "auto" | "png" | "jpeg" | "webp";
+  output_compression: number;
+  background: "auto" | "transparent" | "opaque";
+  input_fidelity: "auto" | "high" | "low";
+}
+
+export interface AppConfig {
+  schema_version: number;
+
+  /** Configured providers. Empty until the user adds one via onboarding
+   *  or the Connection tab. */
+  endpoints: Endpoint[];
+  /** User-defined models, each pinned to an endpoint. */
+  models: ModelEntry[];
+  /** Which ModelEntry to use on the Generate / Edit pages. Empty when
+   *  nothing is selected (e.g. all models removed). */
+  selected_gen_model_id: string;
+  selected_edit_model_id: string;
+
+  /** User-defined output-parameter presets. Picked per task from Generate /
+   *  Edit pages. Independent from the global defaults below. */
+  param_presets: ParamPreset[];
+  /** Which preset (or "global" / "custom") the Generate page is currently
+   *  using. Persisted so the user's last choice survives a relaunch. */
+  selected_gen_param_source: string;
+  selected_edit_param_source: string;
+
   default_aspect_ratio: string;
   default_resolution: string;
   advanced_size_mode: boolean;
   default_size: string;
+  /** Gemini's image API only takes a ratio (no width/height in pixels) —
+   *  fed into `generationConfig.imageConfig.aspectRatio` when generating
+   *  with a Google endpoint. */
+  google_aspect_ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
   send_response_format: boolean;
   timeout_seconds: number;
   verify_ssl: boolean;
@@ -40,14 +100,19 @@ export interface AppConfig {
 }
 
 export const defaultConfig: AppConfig = {
-  base_url: "https://api.openai.com/v1",
-  api_key: "",
-  generation_model: "gpt-image-2",
-  edit_model: "gpt-image-2",
+  schema_version: CONFIG_SCHEMA_VERSION,
+  endpoints: [],
+  models: [],
+  selected_gen_model_id: "",
+  selected_edit_model_id: "",
+  param_presets: [],
+  selected_gen_param_source: "global",
+  selected_edit_param_source: "global",
   default_aspect_ratio: "1:1",
   default_resolution: "1080p",
   advanced_size_mode: false,
   default_size: "1024x1024",
+  google_aspect_ratio: "1:1",
   send_response_format: false,
   timeout_seconds: 180,
   verify_ssl: true,
@@ -65,6 +130,10 @@ export const defaultConfig: AppConfig = {
   auto_cache: true,
   onboarding_completed: false,
 };
+
+/** Re-export so UI callers don't need to import presets.ts directly when
+ *  they only want the Gemini default URL. */
+export { DEFAULT_BASE_URL };
 
 let cachedConfigPath: string | null = null;
 
@@ -89,13 +158,8 @@ export async function getConfigPath(): Promise<string> {
   if (cachedConfigPath) return cachedConfigPath;
   const isPortable = platform() === "windows";
   if (isPortable) {
-    // resourceDir() === exe dir on Windows — guaranteed to exist.
-    // Skip the exists/mkdir check entirely: Tauri's `$RESOURCE/**` scope
-    // only matches *descendants* of the resource dir, not the dir itself,
-    // so probing existence on the dir would be rejected by the fs scope.
     cachedConfigPath = await join(await resourceDir(), "config.json");
   } else {
-    // macOS / Linux: appConfigDir may not exist on first launch.
     const dir = await appConfigDir();
     if (!(await exists(dir))) await mkdir(dir, { recursive: true });
     cachedConfigPath = await join(dir, "config.json");
@@ -106,14 +170,22 @@ export async function getConfigPath(): Promise<string> {
 export async function loadConfig(): Promise<AppConfig> {
   const path = await getConfigPath();
   if (!(await exists(path))) {
-    // First launch ever — leave `onboarding_completed: false` so the wizard
-    // surfaces.
     await saveConfig(defaultConfig);
     return { ...defaultConfig };
   }
   try {
     const text = await readTextFile(path);
-    const parsed = JSON.parse(text) as Partial<AppConfig>;
+    const parsed = JSON.parse(text) as Partial<AppConfig> & Record<string, unknown>;
+
+    // Pre-v2 schema reset: any config missing schema_version or with
+    // version < 2 is from the single-endpoint era. User opted to wipe
+    // on upgrade, so we reset and force the onboarding wizard.
+    const v = typeof parsed.schema_version === "number" ? parsed.schema_version : 1;
+    if (v < CONFIG_SCHEMA_VERSION) {
+      const reset = { ...defaultConfig };
+      await saveConfig(reset);
+      return reset;
+    }
     return { ...defaultConfig, ...parsed };
   } catch (e) {
     console.error("config parse failed", e);
@@ -127,9 +199,26 @@ export async function saveConfig(cfg: AppConfig): Promise<void> {
 }
 
 export function isConfigured(cfg: AppConfig): boolean {
-  return !!cfg.api_key && !cfg.api_key.toLowerCase().startsWith("sk-replace");
+  const hasEndpoint = cfg.endpoints.some((e) => !!e.api_key.trim());
+  const hasModel = cfg.models.length > 0;
+  return hasEndpoint && hasModel;
 }
 
-export function normalizedBaseUrl(cfg: AppConfig): string {
-  return cfg.base_url.replace(/\/+$/, "");
+export function normalizedBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+/** Look up a model's endpoint. Returns null if either the model or its
+ *  endpoint has been removed. */
+export function resolveEndpoint(cfg: AppConfig, modelId: string): { model: ModelEntry; endpoint: Endpoint } | null {
+  const model = cfg.models.find((m) => m.id === modelId);
+  if (!model) return null;
+  const endpoint = cfg.endpoints.find((e) => e.id === model.endpoint_id);
+  if (!endpoint) return null;
+  return { model, endpoint };
+}
+
+export function newId(): string {
+  // Browser-native; available in all modern WebViews (Tauri 2 uses WebView2).
+  return crypto.randomUUID();
 }

@@ -39,7 +39,7 @@ export function Select({ value, onValueChange, placeholder, disabled, className,
           position="popper"
           sideOffset={4}
           className={cn(
-            "z-50 min-w-[var(--radix-select-trigger-width)] max-h-[280px] overflow-hidden",
+            "z-[200] min-w-[var(--radix-select-trigger-width)] max-h-[280px] overflow-hidden",
             "bg-card border border-rule rounded-[var(--radius)]",
             "shadow-popover",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"

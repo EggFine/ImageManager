@@ -176,7 +176,10 @@ export function HomePage({ onNavigate }: Props) {
               key="model"
               icon={<Server size={14} strokeWidth={1.75} />}
               label={t("home.status.model")}
-              value={cfg.generation_model || "—"}
+              value={(() => {
+                const sel = cfg.models.find((m) => m.id === cfg.selected_gen_model_id) ?? cfg.models[0];
+                return sel?.label || sel?.model_id || "—";
+              })()}
               mono
             />,
             <StatusChip

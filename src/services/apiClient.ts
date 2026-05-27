@@ -1,27 +1,18 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { AppConfig, normalizedBaseUrl } from "./config";
+import type { AppConfig, Endpoint } from "./config";
+import { normalizedBaseUrl } from "./config";
+import {
+  ApiError,
+  type ImageResult,
+  type PartialImage,
+  type ConnectionTestResult,
+} from "./apiClientTypes";
+import { googleEdit, googleGenerate, googleTestConnection } from "./googleClient";
 
-export interface ImageResult {
-  bytes: Uint8Array;
-  sourceUrl?: string;
-}
-
-export interface PartialImage {
-  bytes: Uint8Array;
-  index: number;
-}
-
-export class ApiError extends Error {
-  status: number;
-  rawBody?: string;
-  constructor(message: string, status = 0, rawBody?: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.rawBody = rawBody;
-  }
-}
+// Re-export so existing callers can keep `import { ImageResult, ApiError, ... } from "./apiClient"`.
+export { ApiError };
+export type { ImageResult, PartialImage, ConnectionTestResult };
 
 const base64ToBytes = (b64: string): Uint8Array => {
   const bin = atob(b64);
@@ -46,8 +37,8 @@ async function fileToFormPart(path: string): Promise<File> {
   return new File([new Blob([new Uint8Array(bytes)])], fileName(path), { type: mimeOf(path) });
 }
 
-function authHeader(cfg: AppConfig): Record<string, string> {
-  return { Authorization: `Bearer ${cfg.api_key}` };
+function authHeader(endpoint: Endpoint): Record<string, string> {
+  return { Authorization: `Bearer ${endpoint.api_key}` };
 }
 
 async function parseJsonResponse(body: string, status: number): Promise<ImageResult[]> {
@@ -91,8 +82,6 @@ async function httpError(resp: Response): Promise<ApiError> {
   } catch {
     /* not JSON */
   }
-  // Non-JSON body (e.g. gateway HTML page) — surface a short excerpt so the
-  // user can see "Bad Gateway", "upstream timeout", proxy name, etc.
   if (!parsed && body) {
     const stripped = body.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
     if (stripped) msg += ` — ${stripped.slice(0, 200)}`;
@@ -100,9 +89,6 @@ async function httpError(resp: Response): Promise<ApiError> {
   return new ApiError(msg, resp.status, body);
 }
 
-/** Per OpenAI docs (2026-05): `response_format` is supported ONLY for DALL-E.
- *  GPT image models always return base64 by default, sending the field can
- *  trigger a 400 (or a proxy-collapsed 502). */
 function isDallE(model: string): boolean {
   return model.toLowerCase().startsWith("dall-e");
 }
@@ -113,24 +99,21 @@ function isGptImage(model: string): boolean {
 
 // ───────── Health check ─────────
 
-export interface ConnectionTestResult {
-  ok: boolean;
-  status?: number;
-  message: string;
-  /** Number of models the endpoint advertised, if /models returned a list. */
-  modelCount?: number;
+/** Probe the endpoint for liveness. Routed by endpoint.type:
+ *  - openai: GET {base_url}/models with Bearer
+ *  - google: GET {base_url}/models with x-goog-api-key */
+export async function testConnection(endpoint: Endpoint): Promise<ConnectionTestResult> {
+  if (endpoint.type === "google") return googleTestConnection(endpoint);
+  return openaiTestConnection(endpoint);
 }
 
-/** Probe the configured endpoint with `GET /models`. Most OpenAI-compatible
- *  gateways support this — quick way to validate base_url + api_key without
- *  burning image generation tokens. */
-export async function testConnection(cfg: AppConfig): Promise<ConnectionTestResult> {
-  if (!cfg.api_key) return { ok: false, message: "API key is empty" };
-  const url = normalizedBaseUrl(cfg) + "/models";
+async function openaiTestConnection(endpoint: Endpoint): Promise<ConnectionTestResult> {
+  if (!endpoint.api_key) return { ok: false, message: "API key is empty" };
+  const url = normalizedBaseUrl(endpoint.base_url) + "/models";
   try {
     const resp = await fetch(url, {
       method: "GET",
-      headers: { ...authHeader(cfg), Accept: "application/json" },
+      headers: { ...authHeader(endpoint), Accept: "application/json" },
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -148,7 +131,7 @@ export async function testConnection(cfg: AppConfig): Promise<ConnectionTestResu
       const j = await resp.json();
       if (j?.data && Array.isArray(j.data)) modelCount = j.data.length;
     } catch {
-      /* not JSON — that's OK, /models returned 200 either way */
+      /* not JSON */
     }
     return { ok: true, status: resp.status, message: "OK", modelCount };
   } catch (e) {
@@ -184,22 +167,36 @@ function applyGptImageParams(target: Record<string, unknown> | FormData, cfg: Ap
 }
 
 // ───────── Generations ─────────
-export async function generate(cfg: AppConfig, prompt: string, size: string, n: number): Promise<ImageResult[]> {
-  const url = normalizedBaseUrl(cfg) + "/images/generations";
-  const body: Record<string, unknown> = {
-    model: cfg.generation_model,
-    prompt,
-    n,
-    size,
-  };
-  if (cfg.send_response_format && isDallE(cfg.generation_model)) {
+export async function generate(
+  endpoint: Endpoint,
+  modelId: string,
+  cfg: AppConfig,
+  prompt: string,
+  size: string,
+  n: number
+): Promise<ImageResult[]> {
+  if (endpoint.type === "google") return googleGenerate(endpoint, modelId, cfg, prompt);
+  return openaiGenerate(endpoint, modelId, cfg, prompt, size, n);
+}
+
+async function openaiGenerate(
+  endpoint: Endpoint,
+  modelId: string,
+  cfg: AppConfig,
+  prompt: string,
+  size: string,
+  n: number
+): Promise<ImageResult[]> {
+  const url = normalizedBaseUrl(endpoint.base_url) + "/images/generations";
+  const body: Record<string, unknown> = { model: modelId, prompt, n, size };
+  if (cfg.send_response_format && isDallE(modelId)) {
     body.response_format = "b64_json";
   }
-  applyGptImageParams(body, cfg, cfg.generation_model);
+  applyGptImageParams(body, cfg, modelId);
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: { ...authHeader(cfg), "Content-Type": "application/json", Accept: "application/json" },
+    headers: { ...authHeader(endpoint), "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw await httpError(resp);
@@ -207,41 +204,57 @@ export async function generate(cfg: AppConfig, prompt: string, size: string, n: 
 }
 
 export async function generateStream(
+  endpoint: Endpoint,
+  modelId: string,
   cfg: AppConfig,
   prompt: string,
   size: string,
   n: number,
   onPartial: (p: PartialImage) => void
 ): Promise<ImageResult[]> {
-  const url = normalizedBaseUrl(cfg) + "/images/generations";
+  // Gemini's streaming for image gen doesn't emit progressive previews
+  // the way OpenAI's gpt-image-* does, so we fall back to the regular
+  // non-streaming call. onPartial is never fired.
+  if (endpoint.type === "google") return googleGenerate(endpoint, modelId, cfg, prompt);
+
+  const url = normalizedBaseUrl(endpoint.base_url) + "/images/generations";
   const body: Record<string, unknown> = {
-    model: cfg.generation_model,
+    model: modelId,
     prompt,
     n,
     size,
     stream: true,
   };
-  if (cfg.send_response_format && isDallE(cfg.generation_model)) {
+  if (cfg.send_response_format && isDallE(modelId)) {
     body.response_format = "b64_json";
   }
   if (cfg.partial_images > 0) body.partial_images = cfg.partial_images;
-  applyGptImageParams(body, cfg, cfg.generation_model);
+  applyGptImageParams(body, cfg, modelId);
 
-  return await postSse(url, JSON.stringify(body), cfg, onPartial, "application/json");
+  return await postSse(url, JSON.stringify(body), endpoint, onPartial, "application/json");
 }
 
 // ───────── Edits ─────────
-async function buildEditForm(cfg: AppConfig, imagePath: string, maskPath: string | null, prompt: string, size: string, n: number, stream: boolean): Promise<FormData> {
+async function buildEditForm(
+  modelId: string,
+  cfg: AppConfig,
+  imagePath: string,
+  maskPath: string | null,
+  prompt: string,
+  size: string,
+  n: number,
+  stream: boolean
+): Promise<FormData> {
   const form = new FormData();
-  form.append("model", cfg.edit_model);
+  form.append("model", modelId);
   form.append("prompt", prompt);
   form.append("n", String(n));
   form.append("size", size);
-  if (cfg.send_response_format && isDallE(cfg.edit_model)) {
+  if (cfg.send_response_format && isDallE(modelId)) {
     form.append("response_format", "b64_json");
   }
 
-  const isImg2 = cfg.edit_model.toLowerCase().startsWith("gpt-image-2");
+  const isImg2 = modelId.toLowerCase().startsWith("gpt-image-2");
   if (!isImg2 && (cfg.input_fidelity === "high" || cfg.input_fidelity === "low")) {
     form.append("input_fidelity", cfg.input_fidelity);
   }
@@ -251,16 +264,27 @@ async function buildEditForm(cfg: AppConfig, imagePath: string, maskPath: string
   }
   form.append("image", await fileToFormPart(imagePath));
   if (maskPath) form.append("mask", await fileToFormPart(maskPath));
-  applyGptImageParams(form, cfg, cfg.edit_model);
+  applyGptImageParams(form, cfg, modelId);
   return form;
 }
 
-export async function edit(cfg: AppConfig, imagePath: string, maskPath: string | null, prompt: string, size: string, n: number): Promise<ImageResult[]> {
-  const url = normalizedBaseUrl(cfg) + "/images/edits";
-  const form = await buildEditForm(cfg, imagePath, maskPath, prompt, size, n, false);
+export async function edit(
+  endpoint: Endpoint,
+  modelId: string,
+  cfg: AppConfig,
+  imagePath: string,
+  maskPath: string | null,
+  prompt: string,
+  size: string,
+  n: number
+): Promise<ImageResult[]> {
+  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePath, prompt);
+
+  const url = normalizedBaseUrl(endpoint.base_url) + "/images/edits";
+  const form = await buildEditForm(modelId, cfg, imagePath, maskPath, prompt, size, n, false);
   const resp = await fetch(url, {
     method: "POST",
-    headers: { ...authHeader(cfg), Accept: "application/json" },
+    headers: { ...authHeader(endpoint), Accept: "application/json" },
     body: form,
   });
   if (!resp.ok) throw await httpError(resp);
@@ -268,6 +292,8 @@ export async function edit(cfg: AppConfig, imagePath: string, maskPath: string |
 }
 
 export async function editStream(
+  endpoint: Endpoint,
+  modelId: string,
   cfg: AppConfig,
   imagePath: string,
   maskPath: string | null,
@@ -276,20 +302,22 @@ export async function editStream(
   n: number,
   onPartial: (p: PartialImage) => void
 ): Promise<ImageResult[]> {
-  const url = normalizedBaseUrl(cfg) + "/images/edits";
-  const form = await buildEditForm(cfg, imagePath, maskPath, prompt, size, n, true);
-  return await postSse(url, form, cfg, onPartial);
+  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePath, prompt);
+
+  const url = normalizedBaseUrl(endpoint.base_url) + "/images/edits";
+  const form = await buildEditForm(modelId, cfg, imagePath, maskPath, prompt, size, n, true);
+  return await postSse(url, form, endpoint, onPartial);
 }
 
 // ───────── SSE parsing ─────────
 async function postSse(
   url: string,
   body: string | FormData,
-  cfg: AppConfig,
+  endpoint: Endpoint,
   onPartial: (p: PartialImage) => void,
   contentType?: string
 ): Promise<ImageResult[]> {
-  const headers: Record<string, string> = { ...authHeader(cfg), Accept: "text/event-stream" };
+  const headers: Record<string, string> = { ...authHeader(endpoint), Accept: "text/event-stream" };
   if (contentType) headers["Content-Type"] = contentType;
   const resp = await fetch(url, { method: "POST", headers, body });
   if (!resp.ok) throw await httpError(resp);

@@ -1,14 +1,22 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import vue from "@vitejs/plugin-vue";
+import ui from "@nuxt/ui/vite";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    vue(),
+    // Nuxt UI's Vite plugin registers unplugin-auto-import and
+    // unplugin-vue-components, so <UButton/>, <UCard/>, etc. resolve in
+    // templates without manual imports. Type files are emitted into the
+    // project root (auto-imports.d.ts, components.d.ts).
+    ui(),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

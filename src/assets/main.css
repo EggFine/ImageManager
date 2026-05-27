@@ -1,0 +1,27 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@source "../../node_modules/@nuxt/ui";
+
+/* App-level resets / globals beyond what Nuxt UI's base provides. */
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  /* Tauri windows: prevent the WebView's default user-select on the title bar
+   * area; individual selectable surfaces re-enable as needed. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}

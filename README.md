@@ -24,13 +24,21 @@ ImageManager 是一个面向**自部署 / 兼容 OpenAI 图像 API**（`gpt-imag
 - 💾 **绿色版**（Windows）— 配置文件就在 exe 旁边，可整个目录拷走带走
 - 🌍 **完整 i18n** — 简体中文 / English，自动跟随系统
 - 🎚️ **浅 / 深 / 跟随系统三主题** — 实时切换、暖色系一致
-- ⚡ **键盘优先** — `Ctrl 1-4` 导航 / `Ctrl + Enter` 提交 / `Ctrl ,` 设置
+- ⚡ **键盘优先** — `Ctrl 1-5` 导航 / `Ctrl + Enter` 提交 / `Ctrl ,` 设置
 - 📱 **响应式 720 → 4K** — sidebar 自动折叠 / 字体阶梯缩放 / 内容流式回流
 - 🔒 **本地配置**，不向第三方服务发任何遥测
 
 ## 截图
 
-> 待补充。可参考 `docs/screenshots/` 目录。
+<p align="center">
+  <img src="docs/screenshots/cn/home.png" alt="首页" width="820" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/cn/image-gen.png" alt="文生图" width="820" />
+</p>
+
+> 更多截图与英文版本见 [`docs/screenshots/`](./docs/screenshots/)。
 
 ## 下载
 
@@ -52,10 +60,11 @@ ImageManager 是一个面向**自部署 / 兼容 OpenAI 图像 API**（`gpt-imag
 ## 首次使用
 
 1. 启动应用 → 默认进入 **首页**（Hi. I'm ImageManager.）
-2. 进 **设置**（`Ctrl 4`）→ 填入：
+2. 首次启动会弹出 **引导向导**，填入：
    - `base_url`（默认 `https://api.openai.com/v1`，或换成你的兼容代理）
    - `api_key`（`sk-...`）
-3. 回到 **文生图**（`Ctrl 2`），输入 prompt → `Ctrl Enter` 提交
+3. 完成后进入 **文生图**（`Ctrl 2`），输入 prompt → `Ctrl Enter` 提交
+4. 之后随时可在 **设置**（`Ctrl 5` 或 `Ctrl ,`）里调整,生成结果会落盘到 **历史**（`Ctrl 4`）
 
 ## 配置文件位置
 
@@ -76,7 +85,8 @@ ImageManager 是一个面向**自部署 / 兼容 OpenAI 图像 API**（`gpt-imag
 | `Ctrl 1` | 首页 |
 | `Ctrl 2` | 文生图 |
 | `Ctrl 3` | 图像编辑 |
-| `Ctrl 4` / `Ctrl ,` | 设置 |
+| `Ctrl 4` | 历史 |
+| `Ctrl 5` / `Ctrl ,` | 设置 |
 | `Ctrl + Enter` | 提交当前页面的生成 / 编辑 |
 | `Esc` | 关闭下拉 / 组合框 |
 | `↑ / ↓ / Enter / Esc` | 在 Combobox 内导航 |
@@ -181,7 +191,7 @@ push tag 触发 [`release.yml`](.github/workflows/release.yml)，并行编译 Wi
 
 ## License
 
-MIT — 自由使用，欢迎 PR。
+Apache License 2.0 — 详见 [LICENSE](./LICENSE)，欢迎 PR。
 
 ## 鸣谢
 

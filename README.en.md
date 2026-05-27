@@ -24,13 +24,21 @@ The visual language borrows from the **editorial atelier**: warm cream paper, ru
 - 💾 **Portable mode** (Windows) — `config.json` sits next to the `.exe`, take the whole folder anywhere
 - 🌍 **First-class i18n** — Simplified Chinese / English, follows system preference
 - 🎚️ **Light / Dark / System themes** — instant switch, consistent warm palette
-- ⚡ **Keyboard-first** — `Ctrl 1-4` to navigate, `Ctrl + Enter` to submit, `Ctrl ,` for settings
+- ⚡ **Keyboard-first** — `Ctrl 1-5` to navigate, `Ctrl + Enter` to submit, `Ctrl ,` for settings
 - 📱 **Responsive 720 → 4K** — sidebar auto-collapses, type scales by step, content reflows
 - 🔒 **Local-only configuration** — no telemetry, ever
 
 ## Screenshots
 
-> TODO — see `docs/screenshots/` (not yet committed).
+<p align="center">
+  <img src="docs/screenshots/en/home.png" alt="Home" width="820" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/en/image-gen.png" alt="Image generation" width="820" />
+</p>
+
+> Browse more in [`docs/screenshots/`](./docs/screenshots/).
 
 ## Download
 
@@ -52,10 +60,11 @@ Pick your platform from the [Releases page](../../releases):
 ## First run
 
 1. Launch the app → lands on the **Home** page (Hi. I'm ImageManager.)
-2. Open **Settings** (`Ctrl 4`) → fill in:
+2. The first launch shows an **onboarding wizard** — fill in:
    - `base_url` (defaults to `https://api.openai.com/v1`, or point it at your gateway)
    - `api_key` (`sk-...`)
-3. Back to **Generate** (`Ctrl 2`), type a prompt → `Ctrl Enter` to submit
+3. Head over to **Generate** (`Ctrl 2`), type a prompt → `Ctrl Enter` to submit
+4. Tweak anything later from **Settings** (`Ctrl 5` or `Ctrl ,`); results land in **History** (`Ctrl 4`)
 
 ## Configuration file location
 
@@ -76,7 +85,8 @@ The bottom of the Settings page has **Open in default app** and **Show in Explor
 | `Ctrl 1` | Home |
 | `Ctrl 2` | Generate |
 | `Ctrl 3` | Edit |
-| `Ctrl 4` / `Ctrl ,` | Settings |
+| `Ctrl 4` | History |
+| `Ctrl 5` / `Ctrl ,` | Settings |
 | `Ctrl + Enter` | Submit current page (generate / edit) |
 | `Esc` | Close any open popover / combobox |
 | `↑ / ↓ / Enter / Esc` | Navigate inside Combobox |
@@ -181,7 +191,7 @@ You can also trigger the workflow from the Actions tab via `workflow_dispatch` (
 
 ## License
 
-MIT — use freely, PRs welcome.
+Apache License 2.0 — see [LICENSE](./LICENSE). PRs welcome.
 
 ## Acknowledgements
 

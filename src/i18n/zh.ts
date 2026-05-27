@@ -181,6 +181,32 @@ export const zh = {
     about: "关于",
     aboutLine1: "ImageManager — OpenAI 兼容图像 API 桌面客户端",
     aboutLine2: "Tauri 2 + React 19 + Fluent UI / TypeScript",
+    tab: {
+      appearance: "外观",
+      connection: "连接",
+      models: "模型",
+      generation: "生成",
+      about: "关于",
+    },
+    section: {
+      behavior: "行为",
+      storage: "存储",
+    },
+  },
+  about: {
+    tagline: "OpenAI 兼容图像 API 桌面客户端，编辑工坊设计。",
+    description:
+      "ImageManager 是一个面向自部署或兼容 OpenAI 图像 API 的桌面客户端，支持 gpt-image-2 系列模型。本地运行，无遥测。",
+    viewOnGithub: "在 GitHub 查看",
+    starOnGithub: "Star",
+    reportIssue: "反馈问题",
+    viewReleases: "查看版本",
+    techStack: "技术栈",
+    license: "开源协议",
+    licenseValue: "Apache License 2.0",
+    credits: "鸣谢",
+    creditsValue: "OpenAI · Tauri · Radix UI · Lucide",
+    versionLabel: "版本",
   },
   a11y: {
     increase: "增加",

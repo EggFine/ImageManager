@@ -185,6 +185,32 @@ export const en = {
     about: "About",
     aboutLine1: "ImageManager — OpenAI-compatible image API desktop client",
     aboutLine2: "Tauri 2 + React 19 + Fluent UI / TypeScript",
+    tab: {
+      appearance: "Appearance",
+      connection: "Connection",
+      models: "Models",
+      generation: "Generation",
+      about: "About",
+    },
+    section: {
+      behavior: "Behavior",
+      storage: "Storage",
+    },
+  },
+  about: {
+    tagline: "OpenAI-compatible image API desktop client. Editorial atelier design.",
+    description:
+      "ImageManager is a desktop client for the OpenAI image generation API and any compatible gateway. gpt-image-2 family supported. Local-only, no telemetry.",
+    viewOnGithub: "View on GitHub",
+    starOnGithub: "Star",
+    reportIssue: "Report issue",
+    viewReleases: "View releases",
+    techStack: "Tech stack",
+    license: "License",
+    licenseValue: "Apache License 2.0",
+    credits: "Credits",
+    creditsValue: "OpenAI · Tauri · Radix UI · Lucide",
+    versionLabel: "Version",
   },
   a11y: {
     increase: "Increase",

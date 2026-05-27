@@ -66,10 +66,18 @@ let cachedConfigPath: string | null = null;
 export async function getConfigPath(): Promise<string> {
   if (cachedConfigPath) return cachedConfigPath;
   const isPortable = platform() === "windows";
-  const dir = isPortable ? await resourceDir() : await appConfigDir();
-  // appConfigDir doesn't auto-create on first run; resourceDir always exists.
-  if (!(await exists(dir))) await mkdir(dir, { recursive: true });
-  cachedConfigPath = await join(dir, "config.json");
+  if (isPortable) {
+    // resourceDir() === exe dir on Windows — guaranteed to exist.
+    // Skip the exists/mkdir check entirely: Tauri's `$RESOURCE/**` scope
+    // only matches *descendants* of the resource dir, not the dir itself,
+    // so probing existence on the dir would be rejected by the fs scope.
+    cachedConfigPath = await join(await resourceDir(), "config.json");
+  } else {
+    // macOS / Linux: appConfigDir may not exist on first launch.
+    const dir = await appConfigDir();
+    if (!(await exists(dir))) await mkdir(dir, { recursive: true });
+    cachedConfigPath = await join(dir, "config.json");
+  }
   return cachedConfigPath;
 }
 

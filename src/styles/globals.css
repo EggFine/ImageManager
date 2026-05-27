@@ -1,0 +1,290 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ─── Design tokens (CSS variables) ───────────────────────────────────────
+   Color system reorganized so that:
+   - paper / card / inset / raised have visible elevation steps (≥6% L*)
+   - ink / muted / faded / trace are reserved for REAL text and meet WCAG AA
+   - decor is the only token allowed below AA — only for non-informational
+     marks (dots, registration crosshairs, separators)
+   - accent and danger sit in clearly different brightness/saturation bands
+─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces (deepest → highest) */
+  --paper:        #F1ECDC;
+  --card:         #FBF6E6;
+  --inset:        #E5DDC4;
+  --raised:       #D3C8A8;
+  --rule:         #C2B696;
+  --rule-strong:  #998C6C;
+
+  /* Text (AA on --paper, brighter on --card) */
+  --ink:          #181410;     /* primary text             ~16:1 */
+  --muted:        #3D372C;     /* secondary text           ~11:1 */
+  --faded:        #5C5444;     /* tertiary / hints          ~7:1 */
+  --trace:        #756B5A;     /* quaternary / metadata     ~4.6:1 (AA) */
+  --decor:        #B4A988;     /* decoration only — non-informational */
+
+  --fg:           #FFFFFF;     /* on dark surfaces */
+
+  /* Accents */
+  --accent:       #B84C2E;     /* rust */
+  --accent-ink:   #FBF7EB;     /* on accent */
+  --accent-soft:  #F0D9C8;
+  --accent-strong:#9A3D24;
+
+  /* Semantic (kept clearly distinct from accent in hue + brightness) */
+  --danger:       #A82424;     /* deeper, more saturated red — not rust */
+  --warning:      #C97A1A;
+  --success:      #4F7C40;
+
+  --paper-blur: color-mix(in oklab, var(--paper) 80%, transparent);
+  --card-blur:  color-mix(in oklab, var(--card)  85%, transparent);
+
+  --radius: 8px;
+  --radius-sm: 4px;
+
+  /* Win11 close button hover — adapts via .dark below */
+  --close-hover: #c42b1c;
+  --close-hover-fg: #ffffff;
+}
+
+html.dark {
+  --paper:        #0F0D0A;
+  --card:         #1B1712;
+  --inset:        #25201A;
+  --raised:       #322B22;
+  --rule:         #423A2C;
+  --rule-strong:  #5E5341;
+
+  --ink:          #FBF6E8;     /* ~17:1 on paper */
+  --muted:        #D6CDB8;     /* ~13:1 */
+  --faded:        #A89E83;     /* ~ 8:1 */
+  --trace:        #8B816A;     /* ~ 5:1 (AA) */
+  --decor:        #574C38;     /* decoration only */
+
+  --fg:           #0F0D0A;
+
+  --accent:       #F08C5F;
+  --accent-ink:   #1A0F08;
+  --accent-soft:  #3D2517;
+  --accent-strong:#FFAA7E;
+
+  --danger:       #F47171;
+  --warning:      #F2A547;
+  --success:      #7DB36E;
+
+  --paper-blur: color-mix(in oklab, var(--paper) 75%, transparent);
+  --card-blur:  color-mix(in oklab, var(--card)  80%, transparent);
+
+  --close-hover: #c50f1f;
+  --close-hover-fg: #ffffff;
+}
+
+/* ─── Tailwind theme tokens ─────────────────────────────────────────────── */
+@theme inline {
+  --color-paper:        var(--paper);
+  --color-card:         var(--card);
+  --color-inset:        var(--inset);
+  --color-raised:       var(--raised);
+  --color-paper-blur:   var(--paper-blur);
+  --color-card-blur:    var(--card-blur);
+
+  --color-rule:         var(--rule);
+  --color-rule-strong:  var(--rule-strong);
+
+  --color-ink:          var(--ink);
+  --color-muted:        var(--muted);
+  --color-faded:        var(--faded);
+  --color-trace:        var(--trace);
+  --color-decor:        var(--decor);
+
+  --color-fg:           var(--fg);
+
+  --color-accent:       var(--accent);
+  --color-accent-ink:   var(--accent-ink);
+  --color-accent-soft:  var(--accent-soft);
+  --color-accent-strong:var(--accent-strong);
+  --color-danger:       var(--danger);
+  --color-warning:      var(--warning);
+  --color-success:      var(--success);
+
+  --font-display: "Fraunces Variable", "Fraunces", "Times New Roman", serif;
+  --font-sans:    "Figtree Variable", "Figtree", system-ui, -apple-system, sans-serif;
+  --font-mono:    "JetBrains Mono Variable", "JetBrains Mono", "SF Mono", Consolas, monospace;
+
+  --radius: 8px;
+  --radius-sm: 4px;
+}
+
+/* ─── Base ──────────────────────────────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+}
+
+html, body { background-color: var(--paper); }
+
+/* Subtle warm radial that gives the cream paper depth without becoming
+   a visible gradient. Light mode: top-left morning glow. Dark mode:
+   slight warmth from upper-left, falling to true black. */
+#root {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--accent) 5%, transparent) 0%, transparent 55%),
+    radial-gradient(80% 60% at 100% 100%, color-mix(in oklab, var(--accent) 3%, transparent) 0%, transparent 60%);
+}
+html.dark #root {
+  background-image:
+    radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--accent) 8%, transparent) 0%, transparent 55%),
+    radial-gradient(80% 60% at 100% 100%, color-mix(in oklab, var(--accent) 4%, transparent) 0%, transparent 60%);
+}
+
+input, textarea {
+  user-select: text;
+  font-family: inherit;
+}
+
+button { font-family: inherit; }
+
+/* Scrollbar — visible enough to be discoverable, not loud.
+   Narrower on small windows to claw back content space. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+@media (max-width: 767px) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--faded) 45%, transparent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--faded) 70%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* ─── Editorial type primitives ─────────────────────────────────────────── */
+.font-display { font-family: var(--font-display); font-feature-settings: "ss01"; }
+.font-sans    { font-family: var(--font-sans); }
+.font-mono    { font-family: var(--font-mono); font-feature-settings: "tnum", "zero"; }
+
+/* Eyebrow / kicker — small uppercase Latin label.
+   IMPORTANT: under :lang(zh), uppercase + wide tracking are disabled,
+   because Chinese characters have no case and look broken when spaced out. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faded);
+  font-weight: 500;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faded);
+}
+
+/* CJK override: no uppercase pretense, gentle tracking */
+:lang(zh) .kicker,
+:lang(zh) .eyebrow {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--faded);
+}
+
+.amber-rule {
+  display: inline-block;
+  width: 28px;
+  height: 1.5px;
+  background: var(--accent);
+  vertical-align: middle;
+  border-radius: 1px;
+}
+
+.serif-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-feature-settings: "ss01";
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 40%, transparent);
+  color: var(--ink);
+}
+
+/* Film grain — dark mode only, even more subtle than before so text stays crisp */
+.dark .grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.018;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Focus ring helper — used by interactive elements for consistency */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Elevation utilities ─────────────────────────────────────────────────
+   Layered, very soft shadows that read as "light falling on warm paper",
+   not as the heavy black shadows typical of digital UI. */
+.shadow-card {
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 2px 8px color-mix(in oklab, var(--ink) 4%, transparent);
+}
+.shadow-card-hover {
+  box-shadow:
+    0 2px 4px color-mix(in oklab, var(--ink) 8%, transparent),
+    0 8px 16px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+.dark .shadow-card {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.dark .shadow-card-hover {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.6),
+    0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Primary CTA glow — a warm halo, not a generic drop shadow */
+.shadow-accent {
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--ink) 12%, transparent) inset,
+    0 1px 2px color-mix(in oklab, var(--accent) 50%, transparent),
+    0 4px 14px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+.shadow-accent-hover {
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--ink) 15%, transparent) inset,
+    0 2px 4px color-mix(in oklab, var(--accent) 55%, transparent),
+    0 8px 22px color-mix(in oklab, var(--accent) 45%, transparent);
+}

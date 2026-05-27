@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node / frontend
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/WixTools/
+
+# Local config the app writes next to the dev exe (portable mode)
+src-tauri/target/**/config.json
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# OS junk
+.AppleDouble
+.LSOverride
+desktop.ini

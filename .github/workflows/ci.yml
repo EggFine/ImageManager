@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+# Cancel in-flight runs from the same PR / branch — only the latest commit matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast frontend checks — runs once on Linux.
+  frontend:
+    name: Frontend (typecheck + bundle)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: bunx tsc --noEmit
+
+      - name: Vite production build
+        run: bun run build
+
+      - name: Upload build artifact (preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  # Rust shell `cargo check` on all three platforms. Skips the slow link step
+  # `cargo build` would do — catches platform-specific compile / FFI issues
+  # without spending 10+ minutes per runner.
+  rust-check:
+    name: Rust check (${{ matrix.platform.label }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-22.04,   label: "linux"   }
+          - { os: windows-latest, label: "windows" }
+          - { os: macos-latest,   label: "macos"   }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.platform.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies (for tauri-build script)
+        run: bun install --frozen-lockfile
+
+      # The Tauri build script (build.rs) re-runs the frontend build to embed
+      # dist/ as resources, so we pre-build dist here.
+      - name: Build frontend bundle
+        run: bun run build
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      - name: cargo clippy (no fail on warnings)
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -W clippy::all
+        continue-on-error: true

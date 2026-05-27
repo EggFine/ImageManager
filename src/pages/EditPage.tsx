@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen, Wand2, X } from "lucide-react";
+import { FolderOpen, Wand2, X, ImageDown } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { ResultsView } from "@/components/ResultsView";
+import { PromptHistory } from "@/components/PromptHistory";
 import { Button } from "@/components/ui/Button";
 import { Field, Label } from "@/components/ui/Label";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +18,10 @@ import { ApiError, ImageResult, PartialImage, edit, editStream } from "@/service
 import { computeSize } from "@/services/sizeCalc";
 import { isConfigured } from "@/services/config";
 import { useConfig } from "@/services/store";
+import { useHistory } from "@/services/history";
+import { cn } from "@/lib/utils";
+
+const SUPPORTED_EXT = /\.(png|jpe?g|webp)$/i;
 
 export function EditPage() {
   const { t } = useTranslation();
@@ -31,14 +37,53 @@ export function EditPage() {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<ImageResult[]>([]);
   const [partial, setPartial] = useState<PartialImage | null>(null);
+  const [dragHover, setDragHover] = useState(false);
+  const addHistory = useHistory((s) => s.add);
 
-  const pickPng = async (): Promise<string | null> => {
-    const picked = await openDialog({ filters: [{ name: "PNG", extensions: ["png"] }] });
+  // OS-level drag-and-drop: drop a PNG/JPG/WEBP anywhere on the EditPage
+  // and it becomes the source image. Window-level event from Tauri.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      unlisten = await getCurrentWindow().onDragDropEvent((event) => {
+        const payload = event.payload as
+          | { type: "enter" | "over"; paths?: string[] }
+          | { type: "drop"; paths: string[] }
+          | { type: "leave" };
+        if (payload.type === "enter" || payload.type === "over") setDragHover(true);
+        else if (payload.type === "leave") setDragHover(false);
+        else if (payload.type === "drop") {
+          setDragHover(false);
+          const path = payload.paths?.find((p) => SUPPORTED_EXT.test(p));
+          if (path) setImagePath(path);
+          else if (payload.paths?.length) {
+            push({
+              title: t("dialog.invalidImageTitle"),
+              body: t("dnd.invalidFormat"),
+              intent: "warn",
+            });
+          }
+        }
+      });
+    };
+    void setup();
+    return () => { unlisten?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // OpenAI /images/edits per gpt-image-2 docs:
+  //   - source image: PNG / JPG / WEBP, ≤ 50 MB each
+  //   - mask: PNG only (alpha channel encodes the editable region)
+  const pickFile = async (filters: { name: string; extensions: string[] }[]): Promise<string | null> => {
+    const picked = await openDialog({ filters });
     if (typeof picked === "string") return picked;
     if (picked && typeof picked === "object" && "path" in picked)
       return (picked as { path: string }).path;
     return null;
   };
+  const pickSource = () =>
+    pickFile([{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }]);
+  const pickMask = () => pickFile([{ name: "PNG", extensions: ["png"] }]);
 
   const submit = useCallback(async () => {
     if (!isConfigured(cfg)) {
@@ -63,6 +108,7 @@ export function EditPage() {
     setResults([]);
     setPartial(null);
     setStatus(t("status.processing"));
+    addHistory(p, "edit");
 
     try {
       const useStream = cfg.stream && n === 1;
@@ -80,7 +126,7 @@ export function EditPage() {
     } finally {
       setBusy(false);
     }
-  }, [cfg, imagePath, maskPath, prompt, n, push, t, setStatus]);
+  }, [cfg, imagePath, maskPath, prompt, n, push, t, setStatus, addHistory]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -98,7 +144,25 @@ export function EditPage() {
 
   return (
     <Page title={t("edit.title")} desc={t("edit.desc")}>
-      <div className="grid gap-4 md:gap-5 lg:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
+      <div className="relative grid gap-4 md:gap-5 lg:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
+        {/* Drag-and-drop overlay — visible only while a drop is hovering */}
+        {dragHover && (
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-10 rounded-[var(--radius)]",
+              "flex items-center justify-center",
+              "bg-accent-soft/40 backdrop-blur-[2px]",
+              "border-2 border-dashed border-accent animate-in fade-in-0 duration-150"
+            )}
+            aria-hidden
+          >
+            <div className="flex flex-col items-center gap-2 text-accent">
+              <ImageDown size={32} strokeWidth={1.5} />
+              <span className="font-display italic text-[16px]">{t("dnd.dropToReplaceSource")}</span>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 md:gap-4 lg:gap-5">
           <Card label={t("cardLabel.inputs")}>
             <Field className="mb-3">
@@ -107,7 +171,7 @@ export function EditPage() {
                 <Input value={imagePath} readOnly placeholder={t("common.notSelected") ?? ""} mono />
                 <Button
                   aria-label={t("a11y.pickImage")}
-                  onClick={async () => { const p = await pickPng(); if (p) setImagePath(p); }}
+                  onClick={async () => { const p = await pickSource(); if (p) setImagePath(p); }}
                 >
                   <FolderOpen size={12} />
                 </Button>
@@ -119,7 +183,7 @@ export function EditPage() {
                 <Input value={maskPath} readOnly placeholder={t("common.notSelected") ?? ""} mono />
                 <Button
                   aria-label={t("a11y.pickImage")}
-                  onClick={async () => { const p = await pickPng(); if (p) setMaskPath(p); }}
+                  onClick={async () => { const p = await pickMask(); if (p) setMaskPath(p); }}
                 >
                   <FolderOpen size={12} />
                 </Button>
@@ -137,9 +201,12 @@ export function EditPage() {
           <Card
             label={t("cardLabel.prompt")}
             labelTrailing={
-              <span className="font-mono text-[10.5px] text-trace tabular-nums">
-                {prompt.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <PromptHistory page="edit" onPick={setPrompt} />
+                <span className="font-mono text-[10.5px] text-trace tabular-nums">
+                  {prompt.length}
+                </span>
+              </div>
             }
           >
             <Textarea

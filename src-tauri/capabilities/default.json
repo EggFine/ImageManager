@@ -47,6 +47,9 @@
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "os:default"
+    "os:default",
+    "updater:default",
+    "process:default",
+    "process:allow-restart"
   ]
 }

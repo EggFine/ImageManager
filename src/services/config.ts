@@ -17,6 +17,14 @@ export interface AppConfig {
   stream: boolean;
   partial_images: number;
   input_fidelity: "auto" | "high" | "low";
+  /** gpt-image-* `quality`: trades cost/speed for fidelity. */
+  quality: "auto" | "low" | "medium" | "high";
+  /** gpt-image-* `output_format`: bundle file type. */
+  output_format: "auto" | "png" | "jpeg" | "webp";
+  /** gpt-image-* `output_compression`: 0–100, only meaningful for jpeg/webp. */
+  output_compression: number;
+  /** gpt-image-* `background`: transparent requires png or webp. */
+  background: "auto" | "transparent" | "opaque";
   theme: "system" | "light" | "dark";
   backdrop: "mica" | "micaalt" | "acrylic" | "none";
   language: "system" | "zh-Hans" | "en-US";
@@ -38,6 +46,10 @@ export const defaultConfig: AppConfig = {
   stream: true,
   partial_images: 2,
   input_fidelity: "auto",
+  quality: "auto",
+  output_format: "auto",
+  output_compression: 90,
+  background: "auto",
   theme: "system",
   backdrop: "mica",
   language: "system",

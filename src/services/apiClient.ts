@@ -107,6 +107,82 @@ function isDallE(model: string): boolean {
   return model.toLowerCase().startsWith("dall-e");
 }
 
+function isGptImage(model: string): boolean {
+  return model.toLowerCase().startsWith("gpt-image");
+}
+
+// ───────── Health check ─────────
+
+export interface ConnectionTestResult {
+  ok: boolean;
+  status?: number;
+  message: string;
+  /** Number of models the endpoint advertised, if /models returned a list. */
+  modelCount?: number;
+}
+
+/** Probe the configured endpoint with `GET /models`. Most OpenAI-compatible
+ *  gateways support this — quick way to validate base_url + api_key without
+ *  burning image generation tokens. */
+export async function testConnection(cfg: AppConfig): Promise<ConnectionTestResult> {
+  if (!cfg.api_key) return { ok: false, message: "API key is empty" };
+  const url = normalizedBaseUrl(cfg) + "/models";
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: { ...authHeader(cfg), Accept: "application/json" },
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      let msg = `HTTP ${resp.status}`;
+      try {
+        const j = JSON.parse(text);
+        if (j?.error?.message) msg += ` — ${j.error.message}`;
+      } catch {
+        if (text) msg += ` — ${text.slice(0, 160)}`;
+      }
+      return { ok: false, status: resp.status, message: msg };
+    }
+    let modelCount: number | undefined;
+    try {
+      const j = await resp.json();
+      if (j?.data && Array.isArray(j.data)) modelCount = j.data.length;
+    } catch {
+      /* not JSON — that's OK, /models returned 200 either way */
+    }
+    return { ok: true, status: resp.status, message: "OK", modelCount };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Append gpt-image-* only knobs (quality / output_format / background) to a
+ *  JSON body or FormData. We only send values that differ from "auto" so we
+ *  never force a particular default on the upstream model. */
+function applyGptImageParams(target: Record<string, unknown> | FormData, cfg: AppConfig, model: string) {
+  if (!isGptImage(model)) return;
+
+  const set = (k: string, v: unknown) => {
+    if (target instanceof FormData) target.append(k, String(v));
+    else target[k] = v;
+  };
+
+  if (cfg.quality !== "auto") set("quality", cfg.quality);
+  if (cfg.output_format !== "auto") {
+    set("output_format", cfg.output_format);
+    if (
+      (cfg.output_format === "jpeg" || cfg.output_format === "webp") &&
+      Number.isFinite(cfg.output_compression) &&
+      cfg.output_compression >= 0 &&
+      cfg.output_compression <= 100 &&
+      cfg.output_compression !== 100
+    ) {
+      set("output_compression", cfg.output_compression);
+    }
+  }
+  if (cfg.background !== "auto") set("background", cfg.background);
+}
+
 // ───────── Generations ─────────
 export async function generate(cfg: AppConfig, prompt: string, size: string, n: number): Promise<ImageResult[]> {
   const url = normalizedBaseUrl(cfg) + "/images/generations";
@@ -119,6 +195,7 @@ export async function generate(cfg: AppConfig, prompt: string, size: string, n: 
   if (cfg.send_response_format && isDallE(cfg.generation_model)) {
     body.response_format = "b64_json";
   }
+  applyGptImageParams(body, cfg, cfg.generation_model);
 
   const resp = await fetch(url, {
     method: "POST",
@@ -148,6 +225,7 @@ export async function generateStream(
     body.response_format = "b64_json";
   }
   if (cfg.partial_images > 0) body.partial_images = cfg.partial_images;
+  applyGptImageParams(body, cfg, cfg.generation_model);
 
   return await postSse(url, JSON.stringify(body), cfg, onPartial, "application/json");
 }
@@ -173,6 +251,7 @@ async function buildEditForm(cfg: AppConfig, imagePath: string, maskPath: string
   }
   form.append("image", await fileToFormPart(imagePath));
   if (maskPath) form.append("mask", await fileToFormPart(maskPath));
+  applyGptImageParams(form, cfg, cfg.edit_model);
   return form;
 }
 

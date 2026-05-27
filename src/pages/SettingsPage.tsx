@@ -33,6 +33,8 @@ function GithubIcon({ size = 13 }: { size?: number }) {
 }
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { testConnection } from "@/services/apiClient";
+import { useToast } from "@/components/ui/Toast";
 import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { Button } from "@/components/ui/Button";
@@ -179,6 +181,22 @@ function ConnectionTab() {
   const cfg = useConfig((s) => s.config);
   const update = useConfig((s) => s.update);
   const patch = (p: Partial<AppConfig>) => void update(p);
+  const { push } = useToast();
+  const [testing, setTesting] = useState(false);
+
+  const handleTest = async () => {
+    setTesting(true);
+    const r = await testConnection(cfg);
+    setTesting(false);
+    if (r.ok) {
+      const body = r.modelCount !== undefined
+        ? t("settings.testModels", { count: r.modelCount })
+        : r.message;
+      push({ title: t("settings.testOk"), body, intent: "ok" });
+    } else {
+      push({ title: t("settings.testFail"), body: r.message, intent: "error" });
+    }
+  };
 
   return (
     <Card>
@@ -226,7 +244,19 @@ function ConnectionTab() {
           </div>
         </Field>
       </div>
-      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.autoSaveHint")}</p>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-[11.5px] text-faded/90">{t("settings.autoSaveHint")}</p>
+        <Button
+          variant="outline"
+          onClick={handleTest}
+          loading={testing}
+          disabled={!cfg.api_key.trim()}
+        >
+          <Plug size={13} />
+          {testing ? t("settings.testing") : t("settings.testConnection")}
+        </Button>
+      </div>
     </Card>
   );
 }
@@ -280,6 +310,67 @@ function ModelsTab() {
         }
       />
       <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.sizeHint")}</p>
+
+      <div className="my-4 h-px bg-rule" />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field>
+          <Label>{t("settings.quality")}</Label>
+          <Select
+            value={cfg.quality}
+            onValueChange={(v) => patch({ quality: v as AppConfig["quality"] })}
+          >
+            <SelectItem value="auto">{t("settings.qualityAuto")}</SelectItem>
+            <SelectItem value="low">{t("settings.qualityLow")}</SelectItem>
+            <SelectItem value="medium">{t("settings.qualityMedium")}</SelectItem>
+            <SelectItem value="high">{t("settings.qualityHigh")}</SelectItem>
+          </Select>
+        </Field>
+        <Field>
+          <Label>{t("settings.background")}</Label>
+          <Select
+            value={cfg.background}
+            onValueChange={(v) => patch({ background: v as AppConfig["background"] })}
+          >
+            <SelectItem value="auto">{t("settings.backgroundAuto")}</SelectItem>
+            <SelectItem value="transparent">{t("settings.backgroundTransparent")}</SelectItem>
+            <SelectItem value="opaque">{t("settings.backgroundOpaque")}</SelectItem>
+          </Select>
+        </Field>
+      </div>
+      <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.qualityHint")}</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <Field>
+          <Label>{t("settings.outputFormat")}</Label>
+          <Select
+            value={cfg.output_format}
+            onValueChange={(v) => patch({ output_format: v as AppConfig["output_format"] })}
+          >
+            <SelectItem value="auto">{t("settings.outputFormatAuto")}</SelectItem>
+            <SelectItem value="png">{t("settings.outputFormatPng")}</SelectItem>
+            <SelectItem value="jpeg">{t("settings.outputFormatJpeg")}</SelectItem>
+            <SelectItem value="webp">{t("settings.outputFormatWebp")}</SelectItem>
+          </Select>
+        </Field>
+        {(cfg.output_format === "jpeg" || cfg.output_format === "webp") && (
+          <Field>
+            <Label>{t("settings.outputCompression")}</Label>
+            <NumberInput
+              value={cfg.output_compression}
+              onChange={(v) => patch({ output_compression: v })}
+              min={0}
+              max={100}
+            />
+          </Field>
+        )}
+      </div>
+      {(cfg.output_format === "jpeg" || cfg.output_format === "webp") && (
+        <p className="text-[11.5px] text-faded/90 mt-2">{t("settings.outputCompressionHint")}</p>
+      )}
+      {cfg.background === "transparent" && cfg.output_format === "jpeg" && (
+        <p className="text-[11.5px] text-warning mt-2">{t("settings.backgroundHint")}</p>
+      )}
 
       <div className="my-4 h-px bg-rule" />
 

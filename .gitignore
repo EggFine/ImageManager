@@ -37,6 +37,7 @@ src-tauri/target/**/config.json
 .env
 .env.local
 .env.*.local
+secrets/
 
 # OS junk
 .AppleDouble

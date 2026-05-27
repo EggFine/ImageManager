@@ -93,6 +93,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signing keys for the Tauri updater. Generate locally with:
+          #   bunx tauri signer generate -- -w ~/.tauri/imagemanager.key
+          # Then add both to the repo Secrets:
+          #   - TAURI_SIGNING_PRIVATE_KEY = contents of the .key file
+          #   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD = the passphrase
+          # The public key half goes into `plugins.updater.pubkey` in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ steps.tag.outputs.value }}
           releaseName: "ImageManager ${{ steps.tag.outputs.value }}"
@@ -107,10 +115,12 @@ jobs:
             - **Linux**: `.AppImage` / `.deb`
 
             ### Notes
-            On first run, Windows places `config.json` next to the executable (portable green mode); macOS / Linux use the standard user config directory.
+            On first run, Windows places `config.json` next to the executable (portable green mode); macOS / Linux use the standard user config directory. Future versions will auto-update from this release feed.
 
             See [README](https://github.com/${{ github.repository }}/blob/main/README.md) for keyboard shortcuts and configuration.
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: false
+          # Produces latest.json alongside the binaries — that's what the
+          # frontend updater plugin fetches to learn about new versions.
+          includeUpdaterJson: true
           args: ${{ matrix.platform.args }}

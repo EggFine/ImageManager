@@ -4,6 +4,8 @@ import { Sparkles } from "lucide-react";
 import { Page, Card } from "@/components/Page";
 import { SizeSelector } from "@/components/SizeSelector";
 import { ResultsView } from "@/components/ResultsView";
+import { PromptHistory } from "@/components/PromptHistory";
+import { useHistory } from "@/services/history";
 import { Button } from "@/components/ui/Button";
 import { Field, Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
@@ -32,6 +34,7 @@ export function GeneratePage() {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<ImageResult[]>([]);
   const [partial, setPartial] = useState<PartialImage | null>(null);
+  const addHistory = useHistory((s) => s.add);
 
   const submit = useCallback(async () => {
     if (!isConfigured(cfg)) {
@@ -51,6 +54,7 @@ export function GeneratePage() {
     setResults([]);
     setPartial(null);
     setStatus(t("status.generating"));
+    addHistory(p, "generate");
 
     try {
       const useStream = cfg.stream && n === 1;
@@ -68,7 +72,7 @@ export function GeneratePage() {
     } finally {
       setBusy(false);
     }
-  }, [cfg, prompt, n, push, t, setStatus]);
+  }, [cfg, prompt, n, push, t, setStatus, addHistory]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,9 +93,12 @@ export function GeneratePage() {
           <Card
             label={t("cardLabel.prompt")}
             labelTrailing={
-              <span className="font-mono text-[10.5px] text-trace tabular-nums">
-                {prompt.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <PromptHistory page="generate" onPick={setPrompt} />
+                <span className="font-mono text-[10.5px] text-trace tabular-nums">
+                  {prompt.length}
+                </span>
+              </div>
             }
           >
             <Textarea

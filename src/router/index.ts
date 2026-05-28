@@ -9,8 +9,14 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: "/", name: "home", component: () => import("@/views/HomeView.vue") },
-    { path: "/generate", name: "generate", component: () => import("@/views/GenerateView.vue") },
-    { path: "/edit", name: "edit", component: () => import("@/views/EditView.vue") },
+    // Single "create" view: handles both generation (no images) and
+    // editing (with images) — the API endpoint is chosen at submit time
+    // based on `imagePaths.length`. /generate and /edit are kept as
+    // permanent redirects so older sidebar / banner clicks keep working
+    // until everything is migrated.
+    { path: "/create", name: "create", component: () => import("@/views/CreateView.vue") },
+    { path: "/generate", redirect: "/create" },
+    { path: "/edit", redirect: "/create" },
     { path: "/history", name: "history", component: () => import("@/views/HistoryView.vue") },
     {
       path: "/history/:id",

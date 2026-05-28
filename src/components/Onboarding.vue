@@ -22,7 +22,8 @@ const cfg = useConfigStore();
 const isOpen = ref(props.open);
 watch(() => props.open, (v) => (isOpen.value = v));
 watch(isOpen, (v) => {
-  // When user dismisses via Escape (we don't allow outside-click), bail out.
+  // The modal is now dismissible via backdrop / Escape; any close path
+  // bubbles up here so the parent can clear `manualOpen`.
   if (!v && props.open) emit("complete");
 });
 
@@ -132,7 +133,6 @@ async function handleSkip() {
     await cfg.removeEndpoint(endpointId.value);
     endpointId.value = "";
   }
-  await cfg.update({ onboarding_completed: true });
   emit("complete");
 }
 
@@ -157,7 +157,6 @@ async function handleFinish() {
     label: modelLabel.value.trim() || modelId,
     is_custom: modelMode.value === "custom",
   });
-  await cfg.update({ onboarding_completed: true });
   finishing.value = false;
   emit("complete");
 }
@@ -166,8 +165,6 @@ async function handleFinish() {
 <template>
   <UModal
     v-model:open="isOpen"
-    :dismissible="false"
-    :close="false"
     :ui="{ content: 'max-w-[600px]' }"
   >
     <template #content>

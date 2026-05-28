@@ -9,6 +9,7 @@ import { useCacheStore } from "@/stores/cache";
 import { useConfigStore } from "@/stores/config";
 import { usePendingPromptStore } from "@/stores/pendingPrompt";
 import { readEntryImage } from "@/services/imageCache";
+import ImageLightbox from "@/components/ImageLightbox.vue";
 import { useEnterAnimation } from "@/composables/useEnterAnimation";
 
 const { t } = useI18n();
@@ -55,7 +56,6 @@ watch(
 
 onBeforeUnmount(() => {
   imageUrls.value.forEach((u) => URL.revokeObjectURL(u));
-  window.removeEventListener("keydown", onKey);
 });
 
 const relTime = computed(() => {
@@ -71,7 +71,7 @@ const relTime = computed(() => {
 function usePrompt() {
   if (!entry.value) return;
   pendingPrompt.set(entry.value.prompt, entry.value.page);
-  void router.push(`/${entry.value.page}`);
+  void router.push("/create");
 }
 
 async function saveOne(idx: number) {
@@ -138,17 +138,18 @@ function nextImage() {
     enlarged.value < entry.value.files.length - 1 ? enlarged.value + 1 : 0;
 }
 
-function onKey(e: KeyboardEvent) {
-  if (enlarged.value === null) return;
-  if (e.key === "Escape") enlarged.value = null;
-  else if (e.key === "ArrowLeft") prevImage();
-  else if (e.key === "ArrowRight") nextImage();
-}
-
-watch(enlarged, (v) => {
-  if (v !== null) window.addEventListener("keydown", onKey);
-  else window.removeEventListener("keydown", onKey);
+// Bridge between the parent's `enlarged: number | null` state and the
+// lightbox's boolean `open` + string `src`. The lightbox owns Esc/arrow
+// keys internally (and emits @prev/@next for us to wire up).
+const lightboxOpen = computed({
+  get: () => enlarged.value !== null,
+  set: (v) => {
+    if (!v) enlarged.value = null;
+  },
 });
+const lightboxSrc = computed(() =>
+  enlarged.value !== null ? imageUrls.value[enlarged.value] : null
+);
 </script>
 
 <template>
@@ -229,54 +230,44 @@ watch(enlarged, (v) => {
       </div>
     </div>
 
-    <UModal
-      :open="enlarged !== null"
-      :ui="{ content: 'max-w-[95vw]' }"
-      @update:open="enlarged = null"
+    <ImageLightbox
+      v-model:open="lightboxOpen"
+      :src="lightboxSrc"
+      @prev="prevImage"
+      @next="nextImage"
     >
-      <template #content>
-        <div class="relative bg-inverted/85 flex items-center justify-center p-8 min-h-[70vh]">
-          <img
-            v-if="enlarged !== null && imageUrls[enlarged]"
-            :src="imageUrls[enlarged]"
-            alt=""
-            class="max-w-full max-h-[85vh] object-contain rounded shadow-2xl select-none"
-          />
-          <div
-            class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-default border border-default rounded-full px-3 py-1.5"
-          >
-            <UButton
-              icon="i-lucide-chevron-left"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              @click="prevImage"
-            />
-            <span class="font-mono text-xs tabular-nums text-muted">
-              {{ enlarged !== null ? String(enlarged + 1).padStart(2, "0") : "" }} /
-              {{ String(entry.files.length).padStart(2, "0") }}
-            </span>
-            <UButton
-              icon="i-lucide-chevron-right"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              @click="nextImage"
-            />
-            <USeparator orientation="vertical" class="h-3 mx-1" />
-            <UButton
-              icon="i-lucide-download"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              :disabled="enlarged === null"
-              @click="enlarged !== null && saveOne(enlarged)"
-            >
-              {{ t("historyPage.saveOne") }}
-            </UButton>
-          </div>
-        </div>
+      <template #toolbar-extra>
+        <USeparator orientation="vertical" class="h-4 mx-1" />
+        <UButton
+          icon="i-lucide-chevron-left"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          @click="prevImage"
+        />
+        <span class="font-mono text-xs tabular-nums text-muted px-1.5 select-none">
+          {{ enlarged !== null ? String(enlarged + 1).padStart(2, "0") : "" }} /
+          {{ String(entry.files.length).padStart(2, "0") }}
+        </span>
+        <UButton
+          icon="i-lucide-chevron-right"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          @click="nextImage"
+        />
+        <USeparator orientation="vertical" class="h-4 mx-1" />
+        <UButton
+          icon="i-lucide-download"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :disabled="enlarged === null"
+          :aria-label="t('historyPage.saveOne')"
+          :title="t('historyPage.saveOne')"
+          @click="enlarged !== null && saveOne(enlarged)"
+        />
       </template>
-    </UModal>
+    </ImageLightbox>
   </div>
 </template>

@@ -238,7 +238,7 @@ export async function generateStream(
 async function buildEditForm(
   modelId: string,
   cfg: AppConfig,
-  imagePath: string,
+  imagePaths: string[],
   maskPath: string | null,
   prompt: string,
   size: string,
@@ -262,7 +262,17 @@ async function buildEditForm(
     form.append("stream", "true");
     if (cfg.partial_images > 0) form.append("partial_images", String(cfg.partial_images));
   }
-  form.append("image", await fileToFormPart(imagePath));
+  // OpenAI's multi-image convention: single file uses field name `image`,
+  // multiple files use repeated `image[]` (PHP-style array). gpt-image-*
+  // accepts arrays for compositing multiple references; dall-e ignores
+  // anything beyond the first.
+  if (imagePaths.length === 1) {
+    form.append("image", await fileToFormPart(imagePaths[0]));
+  } else {
+    for (const path of imagePaths) {
+      form.append("image[]", await fileToFormPart(path));
+    }
+  }
   if (maskPath) form.append("mask", await fileToFormPart(maskPath));
   applyGptImageParams(form, cfg, modelId);
   return form;
@@ -272,16 +282,16 @@ export async function edit(
   endpoint: Endpoint,
   modelId: string,
   cfg: AppConfig,
-  imagePath: string,
+  imagePaths: string[],
   maskPath: string | null,
   prompt: string,
   size: string,
   n: number
 ): Promise<ImageResult[]> {
-  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePath, prompt);
+  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePaths, prompt);
 
   const url = normalizedBaseUrl(endpoint.base_url) + "/images/edits";
-  const form = await buildEditForm(modelId, cfg, imagePath, maskPath, prompt, size, n, false);
+  const form = await buildEditForm(modelId, cfg, imagePaths, maskPath, prompt, size, n, false);
   const resp = await fetch(url, {
     method: "POST",
     headers: { ...authHeader(endpoint), Accept: "application/json" },
@@ -295,21 +305,40 @@ export async function editStream(
   endpoint: Endpoint,
   modelId: string,
   cfg: AppConfig,
-  imagePath: string,
+  imagePaths: string[],
   maskPath: string | null,
   prompt: string,
   size: string,
   n: number,
   onPartial: (p: PartialImage) => void
 ): Promise<ImageResult[]> {
-  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePath, prompt);
+  if (endpoint.type === "google") return googleEdit(endpoint, modelId, cfg, imagePaths, prompt);
 
   const url = normalizedBaseUrl(endpoint.base_url) + "/images/edits";
-  const form = await buildEditForm(modelId, cfg, imagePath, maskPath, prompt, size, n, true);
+  const form = await buildEditForm(modelId, cfg, imagePaths, maskPath, prompt, size, n, true);
   return await postSse(url, form, endpoint, onPartial);
 }
 
 // ───────── SSE parsing ─────────
+
+/** Walk a few common locations for a base64 image payload. Different
+ *  models / API revisions stick the b64 string in different fields:
+ *  gpt-image-1 used `b64_json`, partial events use `partial_image_b64`,
+ *  the Responses API can nest under `image` / `data` / `output[*]`. */
+function findB64(ev: any): string | undefined {
+  if (typeof ev?.b64_json === "string") return ev.b64_json;
+  if (typeof ev?.partial_image_b64 === "string") return ev.partial_image_b64;
+  if (typeof ev?.data?.b64_json === "string") return ev.data.b64_json;
+  if (typeof ev?.image?.b64_json === "string") return ev.image.b64_json;
+  if (Array.isArray(ev?.output)) {
+    for (const o of ev.output) {
+      const b = findB64(o);
+      if (b) return b;
+    }
+  }
+  return undefined;
+}
+
 async function postSse(
   url: string,
   body: string | FormData,
@@ -328,6 +357,10 @@ async function postSse(
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
   const results: ImageResult[] = [];
+  // Track every event type we see so we can put it in the error message
+  // if we end up with zero results — much easier to diagnose than a flat
+  // "no completed event" message.
+  const seenTypes = new Set<string>();
 
   while (true) {
     const { done, value } = await reader.read();
@@ -348,16 +381,32 @@ async function postSse(
 
       try {
         const ev = JSON.parse(payload);
-        if (ev.type === "image_generation.partial_image" || ev.type === "response.image_generation_call.partial_image") {
-          const b64 = ev.b64_json ?? ev.partial_image_b64;
-          if (typeof b64 === "string") {
-            onPartial({ bytes: base64ToBytes(b64), index: Number(ev.partial_image_index ?? 0) });
-          }
-        } else if (ev.type === "image_generation.completed" || ev.type === "response.image_generation_call.completed") {
-          const b64 = ev.b64_json;
-          if (typeof b64 === "string") {
-            results.push({ bytes: base64ToBytes(b64) });
-          }
+        const type: string | undefined = ev?.type;
+        if (type) seenTypes.add(type);
+
+        // Match by suffix so we handle multiple naming conventions:
+        //   image_generation.partial_image
+        //   response.image_generation_call.partial_image
+        //   image_edit.partial_image  (gpt-image-2 edit endpoint)
+        //   …
+        // Same for `.completed`. If a future event name differs by suffix
+        // we just need to add another branch.
+        const isPartial = typeof type === "string" && type.endsWith(".partial_image");
+        const isCompleted = typeof type === "string" && type.endsWith(".completed");
+        const b64 = findB64(ev);
+
+        if (isPartial && b64) {
+          onPartial({
+            bytes: base64ToBytes(b64),
+            index: Number(ev.partial_image_index ?? ev.index ?? 0),
+          });
+        } else if (isCompleted && b64) {
+          results.push({ bytes: base64ToBytes(b64) });
+        } else if (!isPartial && !isCompleted && b64) {
+          // Unknown event type but it carries a b64 image — accept it as
+          // a result rather than discarding (defensive against API
+          // renames we haven't caught up to).
+          results.push({ bytes: base64ToBytes(b64) });
         }
       } catch {
         /* skip malformed event */
@@ -365,6 +414,12 @@ async function postSse(
     }
   }
 
-  if (results.length === 0) throw new ApiError("流式响应未包含 completed 事件");
+  if (results.length === 0) {
+    const types = Array.from(seenTypes);
+    const detail = types.length > 0
+      ? `seen events: ${types.join(", ")}`
+      : "no SSE events received";
+    throw new ApiError(`流式响应未包含完成事件（${detail}）`);
+  }
   return results;
 }

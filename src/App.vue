@@ -2,14 +2,18 @@
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useConfigStore } from "@/stores/config";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { useUpdatesStore } from "@/stores/updates";
 import { setLanguage } from "@/i18n";
 import Shell from "@/components/Shell.vue";
 import Onboarding from "@/components/Onboarding.vue";
 
 const onboarding = useOnboardingStore();
+// The onboarding wizard only opens when the user explicitly asks for it
+// (via the UnconfiguredBanner's "Open wizard" action). We don't auto-pop
+// it on first launch any more — the in-content banner is enough hint.
 const onboardingOpen = computed(() => {
   if (!cfg.ready) return false;
-  return !cfg.config.onboarding_completed || onboarding.manualOpen;
+  return onboarding.manualOpen;
 });
 
 function handleOnboardingComplete() {
@@ -38,10 +42,16 @@ function onSystemThemeChange() {
   }
 }
 
+const updates = useUpdatesStore();
+
 onMounted(() => {
   void cfg.init();
   mediaQuery = matchMedia("(prefers-color-scheme: dark)");
   mediaQuery.addEventListener("change", onSystemThemeChange);
+  // One-shot update check at app boot. The store guards against
+  // re-entry, so subsequent route changes (which re-mount HomeView)
+  // don't trigger additional network requests.
+  void updates.runCheck();
 });
 
 onUnmounted(() => {

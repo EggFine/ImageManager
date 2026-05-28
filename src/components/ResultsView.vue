@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { join, tempDir } from "@tauri-apps/api/path";
 import type { ImageResult, PartialImage } from "@/services/apiClient";
 import { useConfigStore } from "@/stores/config";
+import { usePendingPromptStore } from "@/stores/pendingPrompt";
+import ImageLightbox from "@/components/ImageLightbox.vue";
 
 const props = defineProps<{
   results: ImageResult[];
@@ -14,8 +18,11 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const cfg = useConfigStore();
+const router = useRouter();
+const pendingPrompt = usePendingPromptStore();
 
 const selected = ref(0);
+const enlarged = ref(false);
 
 function bytesToUrl(bytes: Uint8Array): string {
   return URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
@@ -98,6 +105,22 @@ async function saveAll() {
   }
   cfg.setStatus(t("status.savedMany", { saved, total: props.results.length, dir }));
 }
+
+// Write the currently-selected result to a temp file and hand the path
+// off to the Edit view via the pendingPrompt store. EditView consumes it
+// in setup() and seeds `imagePaths`. The temp file stays in $TEMP for
+// the OS to reap eventually; we don't manage its lifetime beyond pushing
+// the path through.
+async function editThis() {
+  if (props.results.length === 0) return;
+  const bytes = props.results[selected.value].bytes;
+  const tmp = await tempDir();
+  const filename = `imagemanager-result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  const path = await join(tmp, filename);
+  await writeFile(path, bytes);
+  pendingPrompt.setImages([path], "edit");
+  void router.push("/create");
+}
 </script>
 
 <template>
@@ -118,15 +141,20 @@ async function saveAll() {
       class="relative flex-1 min-h-[260px] md:min-h-[320px] lg:min-h-[360px] rounded-md overflow-hidden border border-default bg-elevated/50"
     >
       <div class="absolute inset-0 flex items-center justify-center p-4 md:p-6 lg:p-10">
+        <!-- Clickable when there's a finalized result (not a streaming
+             partial). Opens the lightbox. -->
         <img
           v-if="previewUrl"
           :key="previewUrl"
           :src="previewUrl"
           alt=""
+          :title="results.length > 0 ? t('results.zoomHint') : ''"
           :class="[
-            'max-w-full max-h-full object-contain select-none rounded',
+            'max-w-full max-h-full object-contain select-none rounded transition',
             showStream && 'animate-pulse',
+            results.length > 0 && 'cursor-zoom-in hover:opacity-95',
           ]"
+          @click="results.length > 0 && (enlarged = true)"
         />
         <div v-else-if="showStream" class="flex flex-col items-center gap-4 text-toned">
           <div class="relative w-12 h-12">
@@ -183,7 +211,17 @@ async function saveAll() {
       </button>
     </div>
 
-    <div class="flex gap-2 items-center">
+    <div class="flex gap-2 items-center flex-wrap">
+      <UButton
+        variant="solid"
+        color="primary"
+        size="sm"
+        icon="i-lucide-wand-2"
+        :disabled="results.length === 0"
+        @click="editThis"
+      >
+        {{ t("results.editThis") }}
+      </UButton>
       <UButton
         variant="outline"
         size="sm"
@@ -203,5 +241,16 @@ async function saveAll() {
         {{ t("results.saveAll") }}
       </UButton>
     </div>
+
+    <!-- Lightbox: zoom/pan/rotate handled by the shared component. -->
+    <ImageLightbox v-model:open="enlarged" :src="previewUrl">
+      <template v-if="results.length > 1" #toolbar-extra>
+        <USeparator orientation="vertical" class="h-4 mx-1" />
+        <span class="font-mono text-xs tabular-nums text-muted px-1.5 select-none">
+          {{ String(selected + 1).padStart(2, "0") }} /
+          {{ String(results.length).padStart(2, "0") }}
+        </span>
+      </template>
+    </ImageLightbox>
   </div>
 </template>

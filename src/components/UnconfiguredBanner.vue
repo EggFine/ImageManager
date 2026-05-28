@@ -13,8 +13,6 @@ const shouldShow = computed(() => {
   if (!cfg.ready) return false;
   if (isConfigured(cfg.config)) return false;
   if (onboarding.bannerDismissed) return false;
-  // While the first-launch wizard is up, the banner is redundant.
-  if (!cfg.config.onboarding_completed) return false;
   return true;
 });
 </script>
@@ -36,6 +34,5 @@ const shouldShow = computed(() => {
         onClick: () => onboarding.open(),
       },
     ]"
-    class="rounded-none border-x-0 border-t-0"
   />
 </template>

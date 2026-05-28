@@ -96,10 +96,6 @@ export interface AppConfig {
    *  to `<app-data>/cache/images/` and indexed in history.json. Browsable
    *  from the History page. */
   auto_cache: boolean;
-  /** True once the user has been through the first-launch wizard (or
-   *  intentionally skipped it). False on a brand-new config — that's what
-   *  triggers the OnboardingDialog at app boot. */
-  onboarding_completed: boolean;
 }
 
 export const defaultConfig: AppConfig = {
@@ -132,7 +128,6 @@ export const defaultConfig: AppConfig = {
   language: "system",
   save_directory: "",
   auto_cache: true,
-  onboarding_completed: false,
 };
 
 /** Re-export so UI callers don't need to import presets.ts directly when

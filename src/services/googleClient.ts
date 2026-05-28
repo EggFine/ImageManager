@@ -135,17 +135,19 @@ export async function googleEdit(
   endpoint: Endpoint,
   modelId: string,
   cfg: AppConfig,
-  imagePath: string,
+  imagePaths: string[],
   prompt: string
 ): Promise<ImageResult[]> {
-  const inline = await readFileAsInlineData(imagePath);
+  // Gemini accepts multiple input images by stacking inlineData parts.
+  // Nano Banana 2/Pro use all of them as references when generating the
+  // output image.
+  const inlineParts = await Promise.all(
+    imagePaths.map(async (p) => ({ inlineData: await readFileAsInlineData(p) }))
+  );
   const body = {
     contents: [
       {
-        parts: [
-          { text: prompt },
-          { inlineData: inline },
-        ],
+        parts: [{ text: prompt }, ...inlineParts],
       },
     ],
     generationConfig: buildGenerationConfig(cfg),

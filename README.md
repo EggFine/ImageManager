@@ -211,4 +211,12 @@ push tag 触发 [`release.yml`](.github/workflows/release.yml),并行编译 Wind
 
 ## License
 
-Apache License 2.0 — 详见 [LICENSE](./LICENSE)。欢迎 PR。
+GPL-3.0 — 详见 [LICENSE](./LICENSE)。欢迎 PR。
+
+## 鸣谢
+
+- [OpenAI](https://openai.com/) · [Google AI](https://ai.google.dev/) — 图像生成 API
+- [Tauri](https://tauri.app/) — 桌面应用框架
+- [Nuxt UI](https://ui.nuxt.com/) — 组件库
+- [GSAP](https://gsap.com/) — 动画引擎
+- [Lucide](https://lucide.dev/) — 图标

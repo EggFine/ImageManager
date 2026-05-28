@@ -345,7 +345,7 @@ export const zh = {
     viewReleases: "查看版本",
     techStack: "技术栈",
     license: "开源协议",
-    licenseValue: "Apache License 2.0",
+    licenseValue: "GPL-3.0",
     credits: "鸣谢",
     creditsValue: "OpenAI · Google · Tauri · Nuxt UI · Lucide",
     versionLabel: "版本",

@@ -349,7 +349,7 @@ export const en = {
     viewReleases: "View releases",
     techStack: "Tech stack",
     license: "License",
-    licenseValue: "Apache License 2.0",
+    licenseValue: "GPL-3.0",
     credits: "Credits",
     creditsValue: "OpenAI · Google · Tauri · Nuxt UI · Lucide",
     versionLabel: "Version",

@@ -211,7 +211,7 @@ Pushing the tag triggers [`release.yml`](.github/workflows/release.yml) — para
 
 ## License
 
-Apache License 2.0 — see [LICENSE](./LICENSE). PRs welcome.
+GPL-3.0 — see [LICENSE](./LICENSE). PRs welcome.
 
 ## Credits
 

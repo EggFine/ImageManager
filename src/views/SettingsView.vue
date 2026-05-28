@@ -387,7 +387,11 @@ const renderedUpdateBody = computed<string>(() => {
               <p class="text-sm text-muted leading-relaxed">{{ t("about.description") }}</p>
 
               <div class="flex flex-col gap-2">
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <!-- Primary row: three GitHub actions. "查看版本" (view
+                     releases) was moved to the second row, right after
+                     "查看更新日志" — the two release-history entries
+                     live side by side now. -->
+                <div class="grid grid-cols-3 gap-2">
                   <UButton color="primary" trailing-icon="i-lucide-arrow-right" @click="openUrl(REPO_URL)">
                     {{ t("about.viewOnGithub") }}
                   </UButton>
@@ -406,14 +410,6 @@ const renderedUpdateBody = computed<string>(() => {
                     @click="openUrl(`${REPO_URL}/issues/new`)"
                   >
                     {{ t("about.reportIssue") }}
-                  </UButton>
-                  <UButton
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-package-open"
-                    @click="openUrl(`${REPO_URL}/releases`)"
-                  >
-                    {{ t("about.viewReleases") }}
                   </UButton>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -456,6 +452,15 @@ const renderedUpdateBody = computed<string>(() => {
                       </div>
                     </template>
                   </UPopover>
+
+                  <UButton
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-package-open"
+                    @click="openUrl(`${REPO_URL}/releases`)"
+                  >
+                    {{ t("about.viewReleases") }}
+                  </UButton>
                 </div>
               </div>
 

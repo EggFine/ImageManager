@@ -85,7 +85,10 @@ export interface AppConfig {
   output_compression: number;
   /** gpt-image-* `background`: transparent requires png or webp. */
   background: "auto" | "transparent" | "opaque";
-  theme: "system" | "light" | "dark";
+  theme: "light" | "dark";
+  /** When true, ignore `theme` and track the OS color scheme live —
+   *  changes to system preference instantly mirror into the app. */
+  follow_system_theme: boolean;
   backdrop: "mica" | "micaalt" | "acrylic" | "none";
   language: "system" | "zh-Hans" | "en-US";
   save_directory: string;
@@ -123,7 +126,8 @@ export const defaultConfig: AppConfig = {
   output_format: "auto",
   output_compression: 90,
   background: "auto",
-  theme: "system",
+  theme: "light",
+  follow_system_theme: true,
   backdrop: "mica",
   language: "system",
   save_directory: "",
@@ -185,6 +189,13 @@ export async function loadConfig(): Promise<AppConfig> {
       const reset = { ...defaultConfig };
       await saveConfig(reset);
       return reset;
+    }
+    // Migrate legacy `theme: "system"` → follow_system_theme switch.
+    // The type was tightened to "light" | "dark"; old saved configs may
+    // still carry "system" which we fold into the new boolean flag.
+    if ((parsed as { theme?: string }).theme === "system") {
+      (parsed as { theme: string }).theme = "light";
+      parsed.follow_system_theme = true;
     }
     return { ...defaultConfig, ...parsed };
   } catch (e) {

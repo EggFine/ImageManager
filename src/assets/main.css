@@ -25,3 +25,14 @@ textarea,
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* Hide all scrollbar tracks while keeping scroll behavior (wheel, trackpad,
+ * keyboard, programmatic). The user wanted no visible y-axis scrollbar on
+ * any page; we apply it globally rather than per-container so future
+ * scrollable areas (modals, side panels, lightboxes) inherit the same look. */
+* {
+  scrollbar-width: none; /* Firefox */
+}
+*::-webkit-scrollbar {
+  display: none; /* WebKit / Chromium / Tauri's Wry */
+}

@@ -18,20 +18,26 @@ function handleOnboardingComplete() {
 
 const cfg = useConfigStore();
 
-function applyTheme(theme: string) {
-  const root = document.documentElement;
-  const isDark =
-    theme === "dark" ||
-    (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-  root.classList.toggle("dark", isDark);
+// `theme` IS the current applied state (light/dark). The picker / toggle
+// write to it directly. `follow_system_theme` is an independent flag —
+// when on, OS color-scheme changes are mirrored into `theme` (and turning
+// it on immediately syncs to whatever the system currently is). Both
+// controls remain independently usable.
+function systemTheme(): "light" | "dark" {
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme() {
+  document.documentElement.classList.toggle("dark", cfg.config.theme === "dark");
 }
 
 let mediaQuery: MediaQueryList | undefined;
 function onSystemThemeChange() {
-  if (cfg.config.theme === "system") applyTheme("system");
+  if (cfg.config.follow_system_theme) {
+    void cfg.update({ theme: systemTheme() });
+  }
 }
 
-// Hydrate config from disk before any view mounts.
 onMounted(() => {
   void cfg.init();
   mediaQuery = matchMedia("(prefers-color-scheme: dark)");
@@ -42,10 +48,16 @@ onUnmounted(() => {
   mediaQuery?.removeEventListener("change", onSystemThemeChange);
 });
 
+watch(() => cfg.config.theme, applyTheme, { immediate: true });
+
+// When the user flips `follow_system_theme` on, snap `theme` to whatever
+// the OS currently reports. Subsequent OS changes are picked up by the
+// matchMedia listener above. Turning it off is a no-op — `theme` stays.
 watch(
-  () => cfg.config.theme,
-  (theme) => applyTheme(theme),
-  { immediate: true }
+  () => cfg.config.follow_system_theme,
+  (follow) => {
+    if (follow) void cfg.update({ theme: systemTheme() });
+  }
 );
 
 watch(

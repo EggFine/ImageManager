@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import { gsap } from "gsap";
 import { useI18n } from "vue-i18n";
 import { useConfigStore } from "@/stores/config";
 import { useCacheStore } from "@/stores/cache";
@@ -13,6 +14,7 @@ import type { TabsItem } from "@nuxt/ui";
 import ConnectionTab from "@/components/settings/ConnectionTab.vue";
 import ModelsTab from "@/components/settings/ModelsTab.vue";
 import ParamsTab from "@/components/settings/ParamsTab.vue";
+import { useEnterAnimation } from "@/composables/useEnterAnimation";
 
 const { t } = useI18n();
 const cfg = useConfigStore();
@@ -20,9 +22,34 @@ const cache = useCacheStore();
 const toast = useToast();
 const version = useAppVersion();
 
+const root = ref<HTMLElement | null>(null);
+useEnterAnimation(root);
+
 const REPO_URL = "https://github.com/EggFine/ImageManager";
 
 const tab = ref("appearance");
+
+// Tab content swap animation. Reka UI's TabsContent renders the active
+// panel with `role="tabpanel" data-state="active"`. On every `tab` change
+// we wait one tick for the swap, then fade+slide the new active panel in.
+// `prefers-reduced-motion: reduce` users skip animation entirely.
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+watch(
+  () => tab.value,
+  async () => {
+    if (reduceMotion.matches || !root.value) return;
+    await nextTick();
+    const panel = root.value.querySelector<HTMLElement>(
+      '[role="tabpanel"][data-state="active"]'
+    );
+    if (!panel) return;
+    gsap.fromTo(
+      panel,
+      { autoAlpha: 0, y: 8 },
+      { autoAlpha: 1, y: 0, duration: 0.28, ease: "power3.out" }
+    );
+  }
+);
 
 const tabs = computed<TabsItem[]>(() => [
   { value: "appearance", label: t("settings.tab.appearance"), icon: "i-lucide-palette", slot: "appearance" as const },
@@ -116,13 +143,13 @@ async function handleInstallUpdate() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 max-w-5xl">
-    <div>
+  <div ref="root" class="flex flex-col gap-5">
+    <div v-anim>
       <h1 class="text-3xl font-semibold text-highlighted">{{ t("settings.title") }}</h1>
       <p class="text-sm text-muted mt-1">{{ t("settings.subtitle") }}</p>
     </div>
 
-    <UTabs v-model="tab" :items="tabs" class="w-full">
+    <UTabs v-anim v-model="tab" :items="tabs" class="w-full">
       <!-- Appearance -->
       <template #appearance>
         <UCard class="mt-4">
@@ -131,7 +158,6 @@ async function handleInstallUpdate() {
               <USelect
                 :model-value="cfg.config.theme"
                 :items="[
-                  { label: t('settings.themeSystem'), value: 'system' },
                   { label: t('settings.themeLight'), value: 'light' },
                   { label: t('settings.themeDark'), value: 'dark' },
                 ]"
@@ -152,6 +178,21 @@ async function handleInstallUpdate() {
               />
             </UFormField>
           </div>
+
+          <USeparator class="my-4" />
+
+          <UFormField :label="t('settings.followSystemTheme')" :description="t('settings.followSystemThemeHint')">
+            <div class="flex items-center gap-3 h-9">
+              <USwitch
+                :model-value="cfg.config.follow_system_theme"
+                @update:model-value="patch({ follow_system_theme: $event })"
+              />
+              <span class="text-sm text-muted">
+                {{ cfg.config.follow_system_theme ? t("common.on") : t("common.off") }}
+              </span>
+            </div>
+          </UFormField>
+
           <p class="text-xs text-muted mt-3">{{ t("settings.appearanceHint") }}</p>
         </UCard>
       </template>
@@ -284,18 +325,13 @@ async function handleInstallUpdate() {
         <UCard class="mt-4">
           <div class="flex flex-col md:flex-row gap-6 md:gap-8">
             <div class="md:w-[280px] shrink-0 flex flex-col gap-3">
-              <div class="flex items-center gap-2.5">
-                <span class="w-2.5 h-2.5 rounded-full bg-primary" />
-                <span class="font-mono text-xs uppercase tracking-[0.16em] text-toned">
-                  ImageManager
+              <h2 class="font-semibold leading-tight text-highlighted">
+                <span class="block text-3xl">
+                  Hi <span class="text-primary">I'M</span>
                 </span>
-              </div>
-              <h2 class="text-3xl font-semibold leading-tight text-highlighted">
-                Hi<span class="text-primary">.</span>
-                <br />
-                <span class="italic font-normal text-muted">I'm </span>
-                <span>ImageManager</span>
-                <span class="text-primary">.</span>
+                <span class="block text-xl mt-1">
+                  ImageManager<span class="text-primary">.</span>
+                </span>
               </h2>
               <div class="font-mono text-xs text-toned tracking-wider">
                 {{ t("about.versionLabel") }}
@@ -306,44 +342,48 @@ async function handleInstallUpdate() {
             <div class="flex-1 min-w-0 flex flex-col gap-5">
               <p class="text-sm text-muted leading-relaxed">{{ t("about.description") }}</p>
 
-              <div class="flex flex-wrap gap-2">
-                <UButton color="primary" trailing-icon="i-lucide-arrow-right" @click="openUrl(REPO_URL)">
-                  {{ t("about.viewOnGithub") }}
-                </UButton>
-                <UButton
-                  variant="outline"
-                  color="neutral"
-                  icon="i-lucide-star"
-                  @click="openUrl(`${REPO_URL}/stargazers`)"
-                >
-                  {{ t("about.starOnGithub") }}
-                </UButton>
-                <UButton
-                  variant="outline"
-                  color="neutral"
-                  icon="i-lucide-bug"
-                  @click="openUrl(`${REPO_URL}/issues/new`)"
-                >
-                  {{ t("about.reportIssue") }}
-                </UButton>
-                <UButton
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-lucide-package-open"
-                  @click="openUrl(`${REPO_URL}/releases`)"
-                >
-                  {{ t("about.viewReleases") }}
-                </UButton>
-                <UButton
-                  variant="outline"
-                  color="neutral"
-                  icon="i-lucide-rotate-ccw"
-                  :loading="checking"
-                  :disabled="installing"
-                  @click="handleCheckUpdate"
-                >
-                  {{ checking ? t("updater.checking") : t("updater.checkForUpdates") }}
-                </UButton>
+              <div class="flex flex-col gap-2">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <UButton color="primary" trailing-icon="i-lucide-arrow-right" @click="openUrl(REPO_URL)">
+                    {{ t("about.viewOnGithub") }}
+                  </UButton>
+                  <UButton
+                    variant="outline"
+                    color="neutral"
+                    icon="i-lucide-star"
+                    @click="openUrl(`${REPO_URL}/stargazers`)"
+                  >
+                    {{ t("about.starOnGithub") }}
+                  </UButton>
+                  <UButton
+                    variant="outline"
+                    color="neutral"
+                    icon="i-lucide-bug"
+                    @click="openUrl(`${REPO_URL}/issues/new`)"
+                  >
+                    {{ t("about.reportIssue") }}
+                  </UButton>
+                  <UButton
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-package-open"
+                    @click="openUrl(`${REPO_URL}/releases`)"
+                  >
+                    {{ t("about.viewReleases") }}
+                  </UButton>
+                </div>
+                <div>
+                  <UButton
+                    variant="outline"
+                    color="neutral"
+                    icon="i-lucide-rotate-ccw"
+                    :loading="checking"
+                    :disabled="installing"
+                    @click="handleCheckUpdate"
+                  >
+                    {{ checking ? t("updater.checking") : t("updater.checkForUpdates") }}
+                  </UButton>
+                </div>
               </div>
 
               <UAlert
@@ -389,6 +429,52 @@ async function handleInstallUpdate() {
                   <span class="font-mono text-xs text-muted leading-relaxed">
                     {{ t("about.creditsValue") }}
                   </span>
+                </div>
+              </div>
+
+              <USeparator />
+
+              <!-- Donation. QR images live in /public/Donation and are
+                   served at the bundle root by Vite/Tauri. -->
+              <div class="flex flex-col gap-3">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-heart" class="size-4 text-primary" />
+                  <span class="text-sm font-medium text-highlighted">
+                    {{ t("about.donateTitle") }}
+                  </span>
+                </div>
+                <p class="text-xs text-muted leading-relaxed">
+                  {{ t("about.donateHint") }}
+                </p>
+                <div class="grid grid-cols-2 gap-3 max-w-sm">
+                  <div
+                    class="flex flex-col items-center gap-1.5 p-3 rounded-md border border-default bg-elevated/40"
+                  >
+                    <img
+                      src="/Donation/aliPay.jpg"
+                      :alt="t('about.donateAlipay')"
+                      class="w-full aspect-square object-contain rounded select-none"
+                      draggable="false"
+                      loading="lazy"
+                    />
+                    <span class="text-xs font-mono text-muted tracking-wide">
+                      {{ t("about.donateAlipay") }}
+                    </span>
+                  </div>
+                  <div
+                    class="flex flex-col items-center gap-1.5 p-3 rounded-md border border-default bg-elevated/40"
+                  >
+                    <img
+                      src="/Donation/wxPay.jpg"
+                      :alt="t('about.donateWechat')"
+                      class="w-full aspect-square object-contain rounded select-none"
+                      draggable="false"
+                      loading="lazy"
+                    />
+                    <span class="text-xs font-mono text-muted tracking-wide">
+                      {{ t("about.donateWechat") }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

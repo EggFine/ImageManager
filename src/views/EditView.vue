@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useRouter } from "vue-router";
 import { useConfigStore } from "@/stores/config";
 import { useCacheStore } from "@/stores/cache";
 import { useHistoryStore } from "@/stores/history";
@@ -22,10 +23,14 @@ import ParamFieldsCard from "@/components/ParamFieldsCard.vue";
 import SizeSelector from "@/components/SizeSelector.vue";
 import ResultsView from "@/components/ResultsView.vue";
 import PromptHistory from "@/components/PromptHistory.vue";
+import { useEnterAnimation } from "@/composables/useEnterAnimation";
 
 const SUPPORTED_EXT = /\.(png|jpe?g|webp)$/i;
 
 const { t } = useI18n();
+const router = useRouter();
+const root = ref<HTMLElement | null>(null);
+useEnterAnimation(root);
 const cfg = useConfigStore();
 const cache = useCacheStore();
 const historyStore = useHistoryStore();
@@ -212,13 +217,31 @@ async function submit() {
     cfg.setStatus(t("status.success", { count: imgs.length }));
 
     if (cfg.config.auto_cache && imgs.length > 0) {
-      void cache.add({
+      const entry = await cache.add({
         page: "edit",
         prompt: p,
         model: resolved.value.model.model_id,
         size,
         results: imgs.map((r) => r.bytes),
         outputFormat: effectiveCfg.output_format,
+      });
+      toast.add({
+        title: t("status.success", { count: imgs.length }),
+        description: t("dialog.savedToHistory"),
+        color: "success",
+        icon: "i-lucide-check",
+        actions: entry
+          ? [
+              {
+                label: t("dialog.viewDetail"),
+                color: "primary",
+                variant: "link",
+                onClick: () => {
+                  void router.push(`/history/${entry.id}`);
+                },
+              },
+            ]
+          : undefined,
       });
     }
   } catch (e) {
@@ -241,10 +264,23 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
-  <div>
-    <header class="mb-4">
-      <h1 class="text-2xl font-semibold text-highlighted">{{ t("edit.title") }}</h1>
-      <p class="text-sm text-muted mt-1">{{ t("edit.desc") }}</p>
+  <div ref="root">
+    <header v-anim class="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">{{ t("edit.title") }}</h1>
+        <p class="text-sm text-muted mt-1">{{ t("edit.desc") }}</p>
+      </div>
+      <UButton
+        variant="link"
+        size="xs"
+        color="primary"
+        icon="i-lucide-clock"
+        trailing-icon="i-lucide-arrow-right"
+        to="/history"
+        class="shrink-0"
+      >
+        {{ t("gen.viewHistory") }}
+      </UButton>
     </header>
 
     <div
@@ -261,7 +297,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
 
-      <div class="flex flex-col gap-3 md:gap-4 lg:gap-5">
+      <div v-anim class="flex flex-col gap-3 md:gap-4 lg:gap-5">
         <UCard>
           <template #header>
             <h3 class="text-sm font-medium text-toned uppercase tracking-wider">
@@ -420,7 +456,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </UCard>
       </div>
 
-      <div class="lg:sticky lg:top-2">
+      <div v-anim class="lg:sticky lg:top-2">
         <ResultsView
           :results="results"
           :partial="partial"

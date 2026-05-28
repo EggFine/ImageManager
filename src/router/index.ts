@@ -12,6 +12,12 @@ const router = createRouter({
     { path: "/generate", name: "generate", component: () => import("@/views/GenerateView.vue") },
     { path: "/edit", name: "edit", component: () => import("@/views/EditView.vue") },
     { path: "/history", name: "history", component: () => import("@/views/HistoryView.vue") },
+    {
+      path: "/history/:id",
+      name: "history-detail",
+      component: () => import("@/views/HistoryDetailView.vue"),
+      props: true,
+    },
     { path: "/settings", name: "settings", component: () => import("@/views/SettingsView.vue") },
   ],
 });

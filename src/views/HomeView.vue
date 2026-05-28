@@ -29,7 +29,12 @@ onMounted(() => void cache.init());
 // onto that state — re-mounting on navigation does not re-trigger
 // a network request.
 const updates = useUpdatesStore();
-const { state: updateState, info: updateInfo, installing } = storeToRefs(updates);
+const {
+  state: updateState,
+  info: updateInfo,
+  installing,
+  aggregatedBody: aggregatedUpdateBody,
+} = storeToRefs(updates);
 
 function runUpdateCheck() {
   void updates.runCheck(true);
@@ -77,12 +82,19 @@ async function loadReleaseNotes() {
   }
 }
 
-// The body we actually render: when an update is available we show
-// the upgrade target's notes (from the Tauri updater); otherwise we
-// show the locally-bundled changelog for the current version.
+// The body we actually render. Priority order when an update is
+// available:
+//   1. Aggregated notes for all intermediate releases (GitHub API) —
+//      so a user on v1.0.0 upgrading to v1.3.0 sees 1.1/1.2/1.3 notes
+//      stacked, not just the target's. Async-loaded by the store.
+//   2. Single-version body from the Tauri updater's latest.json — used
+//      while the aggregation is in flight or if the GitHub API fails.
+// When no update is available, show the bundled CHANGELOG.md for the
+// current version.
 const releaseBody = computed<string>(() => {
-  if (updateState.value === "available" && updateInfo.value?.body) {
-    return updateInfo.value.body;
+  if (updateState.value === "available") {
+    if (aggregatedUpdateBody.value) return aggregatedUpdateBody.value;
+    if (updateInfo.value?.body) return updateInfo.value.body;
   }
   return localChangelog.value;
 });

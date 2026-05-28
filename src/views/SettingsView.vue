@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { gsap } from "gsap";
+import { marked } from "marked";
 import { useI18n } from "vue-i18n";
 import { useToast } from "@nuxt/ui/composables";
 import { useConfigStore } from "@/stores/config";
 import { useCacheStore } from "@/stores/cache";
+import { useUpdatesStore } from "@/stores/updates";
 import { statsOf } from "@/services/imageCache";
 import { useAppVersion } from "@/services/version";
-import { checkForUpdate, downloadAndInstall, type UpdateInfo } from "@/services/updater";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { AppConfig } from "@/services/config";
@@ -94,53 +96,94 @@ async function clearCache() {
 }
 
 // ─── About / Updater ───
-const checking = ref(false);
-const installing = ref(false);
-const updateInfo = ref<UpdateInfo | null>(null);
+// Wires the About tab into the app-singleton updates store so all
+// three surfaces (Home update card, footer pill, this tab) stay in
+// sync. Toasts cover the explicit-user-action flow on this tab.
+const updates = useUpdatesStore();
+const {
+  state: updateState,
+  info: updateInfo,
+  installing,
+  aggregatedBody: aggregatedUpdateBody,
+} = storeToRefs(updates);
+
+const checking = computed(() => updateState.value === "checking");
+const hasUpdate = computed(
+  () => updateState.value === "available" && updateInfo.value != null
+);
 
 async function handleCheckUpdate() {
-  checking.value = true;
-  updateInfo.value = null;
-  try {
-    const info = await checkForUpdate();
-    if (info) {
-      updateInfo.value = info;
+  const before = updateState.value;
+  await updates.runCheck(true);
+  // Surface the outcome via a toast — the user clicked an explicit
+  // "Check for updates" action and expects feedback. We deliberately
+  // don't auto-toast on the silent boot check.
+  const next = updateState.value;
+  if (next === "available" && updateInfo.value) {
+    if (before !== "available") {
       toast.add({
-        title: t("updater.available", { version: info.version }),
+        title: t("updater.available", { version: updateInfo.value.version }),
         description: t("updater.availableBody"),
         color: "info",
       });
-    } else {
-      toast.add({
-        title: t("updater.upToDate"),
-        description: `v${version.value}`,
-        color: "success",
-      });
     }
-  } catch (e) {
+  } else if (next === "latest") {
+    toast.add({
+      title: t("updater.upToDate"),
+      description: `v${version.value}`,
+      color: "success",
+    });
+  } else if (next === "error") {
     toast.add({
       title: t("updater.failed"),
-      description: e instanceof Error ? e.message : String(e),
+      description: t("home.update.errorLine"),
       color: "error",
     });
   }
-  checking.value = false;
 }
 
 async function handleInstallUpdate() {
-  if (!updateInfo.value) return;
-  installing.value = true;
   try {
-    await downloadAndInstall(updateInfo.value);
+    await updates.install();
   } catch (e) {
     toast.add({
       title: t("updater.failed"),
       description: e instanceof Error ? e.message : String(e),
       color: "error",
     });
-    installing.value = false;
   }
 }
+
+// ─── Bundled CHANGELOG.md for the "查看当前版本更新日志" popover.
+// Same source the Home update card uses for the `latest` state — the
+// developer-maintained file in /public/CHANGELOG.md, shipped with the
+// bundle so it's always offline-available and always matches the
+// running version. Loaded once on mount.
+const localChangelog = ref<string>("");
+
+onMounted(async () => {
+  try {
+    const resp = await fetch("/CHANGELOG.md");
+    if (resp.ok) localChangelog.value = await resp.text();
+  } catch (e) {
+    console.warn("CHANGELOG.md fetch failed", e);
+  }
+});
+
+const renderedLocalChangelog = computed<string>(() => {
+  if (!localChangelog.value) return "";
+  return marked.parse(localChangelog.value, { breaks: true, async: false }) as string;
+});
+
+// Body shown on the "available" alert: prefer the aggregated multi-
+// release notes (so users on older versions see everything they're
+// catching up on); fall back to the single target-version body while
+// the GitHub Releases fetch is in flight or has failed.
+const renderedUpdateBody = computed<string>(() => {
+  const raw = aggregatedUpdateBody.value ?? updateInfo.value?.body ?? "";
+  if (!raw) return "";
+  return marked.parse(raw, { breaks: true, async: false }) as string;
+});
 </script>
 
 <template>
@@ -373,7 +416,7 @@ async function handleInstallUpdate() {
                     {{ t("about.viewReleases") }}
                   </UButton>
                 </div>
-                <div>
+                <div class="flex flex-wrap gap-2">
                   <UButton
                     variant="outline"
                     color="neutral"
@@ -384,26 +427,83 @@ async function handleInstallUpdate() {
                   >
                     {{ checking ? t("updater.checking") : t("updater.checkForUpdates") }}
                   </UButton>
+
+                  <!-- Local changelog popover — shows the current
+                       version's release notes (same source the Home
+                       update card uses for the `latest` state).
+                       Hidden until the bundled file has loaded. -->
+                  <UPopover
+                    v-if="renderedLocalChangelog"
+                    :ui="{ content: 'w-[420px] max-h-[480px] overflow-hidden' }"
+                  >
+                    <UButton variant="ghost" color="neutral" icon="i-lucide-book-open">
+                      {{ t("home.update.viewNotes") }}
+                    </UButton>
+                    <template #content>
+                      <div class="p-3 flex flex-col gap-2">
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="font-semibold text-highlighted text-sm">
+                            {{ t("home.update.notesPopoverTitle") }}
+                          </span>
+                          <span class="font-mono text-[10.5px] text-toned tabular-nums">
+                            v{{ version ?? "—" }}
+                          </span>
+                        </div>
+                        <div
+                          class="release-notes text-xs text-toned max-h-80 overflow-y-auto pr-1"
+                          v-html="renderedLocalChangelog"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
                 </div>
               </div>
 
-              <UAlert
-                v-if="updateInfo"
-                color="primary"
-                variant="soft"
-                icon="i-lucide-circle-check"
-                :title="t('updater.available', { version: updateInfo.version })"
-                :description="updateInfo.body ?? undefined"
-                :actions="[
-                  {
-                    label: installing ? t('updater.installing') : t('updater.installAndRestart'),
-                    color: 'primary',
-                    icon: 'i-lucide-download',
-                    loading: installing,
-                    onClick: handleInstallUpdate,
-                  },
-                ]"
-              />
+              <!-- Available-update alert. State + body come from the
+                   singleton store, so this card mirrors what the Home
+                   update card and the footer pill are showing. The
+                   description renders the aggregated multi-release
+                   body when available — users skipping versions see
+                   everything they're catching up on, not just the
+                   target's notes. -->
+              <UCard
+                v-if="hasUpdate && updateInfo"
+                :ui="{ body: 'p-4' }"
+                class="bg-primary/5 border-primary/30"
+              >
+                <div class="flex items-start gap-3">
+                  <UIcon
+                    name="i-lucide-arrow-up-circle"
+                    class="size-5 text-primary shrink-0 mt-0.5"
+                  />
+                  <div class="flex-1 min-w-0 flex flex-col gap-2">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                      <span class="text-sm font-semibold text-highlighted">
+                        {{ t("updater.available", { version: updateInfo.version }) }}
+                      </span>
+                      <span class="font-mono text-[10.5px] tabular-nums text-toned">
+                        v{{ version ?? "—" }} → v{{ updateInfo.version }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="renderedUpdateBody"
+                      class="release-notes text-xs text-toned max-h-48 overflow-y-auto pr-1"
+                      v-html="renderedUpdateBody"
+                    />
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <UButton
+                        color="primary"
+                        size="sm"
+                        icon="i-lucide-download"
+                        :loading="installing"
+                        @click="handleInstallUpdate"
+                      >
+                        {{ installing ? t("updater.installing") : t("updater.installAndRestart") }}
+                      </UButton>
+                    </div>
+                  </div>
+                </div>
+              </UCard>
 
               <USeparator />
 
@@ -485,3 +585,58 @@ async function handleInstallUpdate() {
     </UTabs>
   </div>
 </template>
+
+<style scoped>
+/* Theme-aware styling for marked-rendered release notes (both the
+   in-card "available update" body and the local changelog popover).
+   `:deep()` is required to reach into `v-html`-injected DOM. */
+.release-notes :deep(h1),
+.release-notes :deep(h2),
+.release-notes :deep(h3) {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ui-text-highlighted);
+  margin: 0.4rem 0 0.2rem;
+}
+.release-notes :deep(h1:first-child),
+.release-notes :deep(h2:first-child),
+.release-notes :deep(h3:first-child) {
+  margin-top: 0;
+}
+.release-notes :deep(p) {
+  margin: 0.15rem 0;
+  line-height: 1.5;
+}
+.release-notes :deep(ul),
+.release-notes :deep(ol) {
+  padding-left: 1.1rem;
+  margin: 0.15rem 0;
+}
+.release-notes :deep(ul) { list-style: disc; }
+.release-notes :deep(ol) { list-style: decimal; }
+.release-notes :deep(li) {
+  margin: 0;
+  line-height: 1.5;
+}
+.release-notes :deep(hr) {
+  margin: 0.4rem 0;
+  border: 0;
+  border-top: 1px solid var(--ui-border);
+}
+.release-notes :deep(blockquote) {
+  margin: 0.2rem 0;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--ui-border);
+  color: var(--ui-text-toned);
+}
+.release-notes :deep(a) {
+  color: var(--ui-primary);
+  text-decoration: underline;
+}
+.release-notes :deep(code) {
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  background: var(--ui-bg-elevated);
+  font-size: 0.9em;
+}
+</style>

@@ -34,8 +34,12 @@ const updateAvailable = computed(
   () => updatesStore.state === "available" && updatesStore.info != null
 );
 
+// Footer popover renders the aggregated body (covering every release
+// between current and target) when the store has it; falls back to
+// the single target-version body from latest.json while the
+// aggregation is in flight or if the GitHub API call failed.
 const renderedUpdateNotes = computed<string>(() => {
-  const body = updatesStore.info?.body;
+  const body = updatesStore.aggregatedBody ?? updatesStore.info?.body;
   if (!body) return "";
   return marked.parse(body, { breaks: true, async: false }) as string;
 });

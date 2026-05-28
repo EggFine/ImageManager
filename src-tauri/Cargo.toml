@@ -1,11 +1,16 @@
 [package]
 name = "imagemanager"
 # Cargo metadata only — does NOT control the bundled app version.
-# Source of truth is `../package.json` (read by tauri.conf.json's
-# `"version": "../package.json"`). Sync this if you want
-# `cargo metadata` / `CARGO_PKG_VERSION` to match, but it's not required
-# for the Tauri bundle / installer / About dialog.
-version = "1.1.0"
+# Source of truth is `../package.json`, pulled in by tauri.conf.json's
+# `"version": "../package.json"` field. The Tauri bundle, installer
+# metadata, About dialog, updater feed, etc. all derive from there.
+#
+# We intentionally don't bump this on every release — Cargo can't read
+# package.json natively, and the only consumers of this value
+# (`cargo metadata`, the `CARGO_PKG_VERSION` macro) aren't used by
+# either the Rust code in this crate or any release tooling. Leaving
+# it at a stable sentinel avoids a second place to forget to update.
+version = "1.0.0"
 description = "OpenAI-compatible image API desktop client"
 authors = ["EggFine"]
 edition = "2021"

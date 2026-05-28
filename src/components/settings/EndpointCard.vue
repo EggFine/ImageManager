@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useToast } from "@nuxt/ui/composables";
 import { useConfigStore } from "@/stores/config";
 import { testConnection } from "@/services/apiClient";
 import type { ConnectionTestResult } from "@/services/apiClientTypes";
@@ -83,7 +84,7 @@ async function handleRemove() {
           ]"
           class="w-full"
           @update:model-value="
-            (v) => {
+            (v: string) => {
               const next = v as EndpointType;
               const wasDefault = Object.values(DEFAULT_BASE_URL).includes(endpoint.base_url);
               patchEp({

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { gsap } from "gsap";
 import { useI18n } from "vue-i18n";
+import { useToast } from "@nuxt/ui/composables";
 import { useConfigStore } from "@/stores/config";
 import { useCacheStore } from "@/stores/cache";
 import { statsOf } from "@/services/imageCache";

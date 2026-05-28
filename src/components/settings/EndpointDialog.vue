@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useToast } from "@nuxt/ui/composables";
 import { testConnection } from "@/services/apiClient";
 import type { ConnectionTestResult } from "@/services/apiClientTypes";
 import {

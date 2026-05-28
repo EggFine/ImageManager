@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useToast } from "@nuxt/ui/composables";
 import { useRouter } from "vue-router";
 import { useConfigStore } from "@/stores/config";
 import { useCacheStore } from "@/stores/cache";

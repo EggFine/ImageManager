@@ -1,14 +1,11 @@
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 export interface UpdateInfo {
   version: string;
   body?: string | null;
   date?: string | null;
-  /** The plugin's Update instance. Typed as `unknown` here so private-field
-   *  drift across plugin versions doesn't cascade through the codebase —
-   *  we only call .downloadAndInstall() on it, in this file. */
-  raw: unknown;
+  raw: Update;
 }
 
 /** Wraps the updater plugin so the rest of the app deals in plain data.
@@ -31,7 +28,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 /** Downloads + installs the update payload, then re-launches the app.
  *  Caller should make UI block during this (it can take minutes on slow nets). */
 export async function downloadAndInstall(info: UpdateInfo): Promise<void> {
-  await (info.raw as { downloadAndInstall(): Promise<void> }).downloadAndInstall();
+  await info.raw.downloadAndInstall();
   // On Windows / Linux the NSIS / .deb installer typically asks for a restart
   // implicitly; on macOS the .dmg overwrite needs an explicit relaunch.
   await relaunch();

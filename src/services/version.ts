@@ -1,17 +1,16 @@
-import { useEffect, useState } from "react";
+import { ref, type Ref } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
 
 /**
- * Reads the running app's version via Tauri. Tauri's `version` field points
- * to `../package.json`, so this is the single source of truth.
- * Returns `""` until the async read resolves.
+ * Vue composable that reads the running app's version via Tauri. Tauri's
+ * `version` field points to `../package.json`, so this is the single
+ * source of truth. The returned ref starts as `""` and resolves to the
+ * real version once the async read completes.
  */
-export function useAppVersion(): string {
-  const [version, setVersion] = useState("");
-  useEffect(() => {
-    void getVersion()
-      .then(setVersion)
-      .catch((e) => console.error("getVersion failed", e));
-  }, []);
+export function useAppVersion(): Ref<string> {
+  const version = ref("");
+  void getVersion()
+    .then((v) => (version.value = v))
+    .catch((e) => console.error("getVersion failed", e));
   return version;
 }
